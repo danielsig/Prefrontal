@@ -1,0 +1,34 @@
+{
+	"folders": [
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+		"files.insertFinalNewline": true,
+		"editor.insertSpaces": false,
+		"editor.detectIndentation": false,
+		"files.eol": "\n",
+		"files.exclude": {
+			"bin": true,
+			"obj": true
+		},
+	},
+	"extensions": {
+		"recommendations": [
+			"dbaeumer.vscode-eslint",
+			"ue.alphabetical-sorter",
+			"ms-dotnettools.csharp",
+			"ms-dotnettools.csdevkit",
+			"k--kato.docomment",
+			"streetsidesoftware.code-spell-checker",
+			"giflens.giflens",
+			"shardulm94.trailing-spaces",
+			"lukaszpolowczyk.swap-selection-with-clipboard",
+			"fausto95.swap",
+			"searking.preview-vscode",
+			"christian-kohler.npm-intellisense",
+			"pflannery.vscode-versionlens"
+		]
+	}
+}

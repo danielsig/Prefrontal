@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.5.002.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Prefrontal", ".\Prefrontal\Prefrontal.csproj", "{5EEC7948-ADE3-4B7A-B7BB-8AF6600007A9}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Shell", "Shell\Shell.csproj", "{EF9795D6-410A-445A-B003-DB427D4C1A00}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{5EEC7948-ADE3-4B7A-B7BB-8AF6600007A9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5EEC7948-ADE3-4B7A-B7BB-8AF6600007A9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5EEC7948-ADE3-4B7A-B7BB-8AF6600007A9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5EEC7948-ADE3-4B7A-B7BB-8AF6600007A9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EF9795D6-410A-445A-B003-DB427D4C1A00}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EF9795D6-410A-445A-B003-DB427D4C1A00}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EF9795D6-410A-445A-B003-DB427D4C1A00}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EF9795D6-410A-445A-B003-DB427D4C1A00}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {A892F5F6-0940-453F-AC90-801EE6F71B3F}
+	EndGlobalSection
+EndGlobal
