@@ -5,11 +5,12 @@ namespace Prefrontal;
 /// <para>
 /// 	Each module's constructor can have injectable dependencies in its parameters
 /// 	which are injected by the agent using its <see cref="Agent.ServiceProvider"/>.
+/// 	The module's constructor can also take the agent itself as a parameter and even other modules that it requires.
 /// </para>
-/// <list>
+/// <list type="bullet">
 /// 	<item>Modules can be added to an agent using the <see cref="Agent.AddModule{T}"/> method.</item>
 /// 	<item>Modules can be removed from an agent using the <see cref="Agent.RemoveModule{T}"/> method.</item>
-///		<item>Call <see cref="Agent.Initialize"/> after adding all modules to the agent to initialize all of its modules.</item>
+///		<item>Call <see cref="Agent.Initialize"/> on the agent after adding all modules to it in order to initialize all of its modules.</item>
 /// </list>
 /// </summary>
 public abstract class Module
@@ -22,8 +23,10 @@ public abstract class Module
 	/// <summary>
 	/// Initializes the module.
 	/// This is where you should set up any connections to other modules.
+	/// <br/>
+	/// <em>Do not call this method directly. It gets called when you call <see cref="Agent.Initialize"/> on the agent.</em>
 	/// </summary>
-	public virtual void Initialize()
+	protected internal virtual void Initialize()
 	{
 
 	}

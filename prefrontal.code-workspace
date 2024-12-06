@@ -13,9 +13,12 @@
 			"bin": true,
 			"obj": true
 		},
+		"cSpell.words": [
+		],
 	},
 	"extensions": {
 		"recommendations": [
+			// c-spell: disable
 			"dbaeumer.vscode-eslint",
 			"ue.alphabetical-sorter",
 			"ms-dotnettools.csharp",
@@ -29,6 +32,7 @@
 			"searking.preview-vscode",
 			"christian-kohler.npm-intellisense",
 			"pflannery.vscode-versionlens"
+			// c-spell: enable
 		]
 	}
 }

@@ -39,13 +39,13 @@ add different [Modules](./Prefrontal/Modules) to it,
 and then run it by calling the `Initialize` method.
 
 ```csharp
-	var agent = new Agent
-		{
-			Name = "MyAgent",
-			Description = "My first agent",
-		}
-		.AddModule<TimerModule>()
-		.AddModule<LLMProviderModule>()
-		.AddModule<ConsoleChatModule>()
-		.Initialize();
+var agent = new Agent
+	{
+		Name = "MyAgent",
+		Description = "My first agent",
+	}
+	.AddModule<TimerModule>()
+	.AddModule<LLMProviderModule>()
+	.AddModule<ConsoleChatModule>()
+	.Initialize();
 ```

@@ -1,2 +1,4 @@
 bin
 obj
+.docs/_site
+.docs/api
