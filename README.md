@@ -5,6 +5,8 @@
 > [!WARNING]
 > This project is still in its early stages and is not yet ready for production use.
 
+Check out the [Prefrontal API Docs](https://danielsig.github.io/Prefrontal/api/Prefrontal.html).
+
 ## What is Prefrontal?
 
 Prefrontal is a .NET Core library
