@@ -65,12 +65,15 @@ public sealed class Agent : IDisposable
 	/// </exception>
 	public Agent AddModule<T>(Action<T>? configure = null)
 	where T : Module
-		=> AddModule(
+	{
+		AddModuleInternal(
 			typeof(T),
 			configure is null
 				? null
 				: m => configure((T)m)
 		);
+		return this;
+	}
 	
 	/// <summary>
 	/// Adds a module of the specified type to the agent.
@@ -99,7 +102,7 @@ public sealed class Agent : IDisposable
 	/// </exception>
 	public Agent AddModule(Type type, Action<Module>? configure = null)
 	{
-		AddModule(type, configure);
+		AddModuleInternal(type, configure);
 		return this;
 	}
 	private Module? AddModuleInternal(Type type, Action<Module>? configure = null)
