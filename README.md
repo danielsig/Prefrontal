@@ -36,9 +36,11 @@ it is not yet available on NuGet.
 
 ## How to use
 
-You simply instantiate an [Agent](./Prefrontal/Agent.cs),
-add different [Modules](./Prefrontal/Modules) to it,
-and then run it by calling the `Initialize` method.
+You simply instantiate an [Agent](https://danielsig.github.io/Prefrontal/api/Prefrontal.Agent.html),
+add various [Modules](https://danielsig.github.io/Prefrontal/api/Prefrontal.Modules.html)
+to it via [AddModule&lt;T&gt;()](https://danielsig.github.io/Prefrontal/api/Prefrontal.Agent.html#Prefrontal_Agent_AddModule__1_System_Action___0__)
+and then run it by calling
+[Initialize()](https://danielsig.github.io/Prefrontal/api/Prefrontal.Agent.html#Prefrontal_Agent_Initialize).
 
 ```csharp
 var agent = new Agent
