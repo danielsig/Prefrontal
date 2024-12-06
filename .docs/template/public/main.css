@@ -1,0 +1,19 @@
+#logo
+{
+	width: 40px;
+	height: 40px;
+	margin: auto 16px;
+}
+article > p:first-of-type
+{
+	display: inline;
+}
+article > p:first-of-type > img
+{
+	max-height: 160px;
+	margin: 16px 32px 16px 16px;
+}
+article > p:first-of-type + h1
+{
+	display: inline;
+}
