@@ -543,7 +543,7 @@ public class Agent : IDisposable
 		
 		State = Initializing;
 		var exceptions = new List<Exception>();
-		foreach(var module in _modules)
+		foreach(var module in _modules.ToList())
 			try
 			{
 				module.Initialize();
@@ -572,7 +572,7 @@ public class Agent : IDisposable
 		try
 		{
 			var exceptions = new List<Exception>();
-			foreach(var module in _modules)
+			foreach(var module in _modules.ToList())
 				if(module is IDisposable disposable)
 					try
 					{

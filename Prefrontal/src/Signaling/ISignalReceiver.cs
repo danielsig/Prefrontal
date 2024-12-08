@@ -15,7 +15,7 @@ public interface ISignalReceiver<TSignal> : ISignalProcessor<TSignal>
 	/// via <see cref="Module.SendSignalAsync{TSignal}(TSignal)"/>
 	/// or <see cref="Module.SendSignal{TSignal}(TSignal)"/>.
 	/// <br/>
-	/// Examples:
+	/// Example:
 	/// <code>
 	/// public class MySignalLoggerModule : Module, ISignalReceiver&lt;MySignal&gt;
 	/// {
