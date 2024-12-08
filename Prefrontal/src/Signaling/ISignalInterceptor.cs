@@ -9,8 +9,11 @@ namespace Prefrontal.Signaling;
 public interface ISignalInterceptor<TSignal> : ISignalProcessor<TSignal>
 {
 	/// <summary>
-	/// Intercepts a signal before it is processed by other modules.
+	/// Intercepts a signal sent by another module
+	/// via <see cref="Module.SendSignalAsync{TSignal}(TSignal)"/>
+	/// or <see cref="Module.SendSignal{TSignal}(TSignal)"/>.
 	/// <br/>
+	/// Interceptors can modify the signal or stop it from propagating to other modules.
 	/// You can return either the same input <paramref name="signal"/>
 	/// or a new <typeparamref name="TSignal"/> instance
 	/// which will then propagate to other modules.

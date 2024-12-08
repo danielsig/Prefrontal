@@ -9,5 +9,23 @@ namespace Prefrontal.Signaling;
 /// <typeparam name="TSignal"></typeparam>
 public interface ISignalReceiver<TSignal> : ISignalProcessor<TSignal>
 {
+	/// <summary>
+	/// Receives a signal of type <typeparamref name="TSignal"/>
+	/// that was sent by another module
+	/// via <see cref="Module.SendSignalAsync{TSignal}(TSignal)"/>
+	/// or <see cref="Module.SendSignal{TSignal}(TSignal)"/>.
+	/// <br/>
+	/// Examples:
+	/// <code>
+	/// public class MySignalLoggerModule : Module, ISignalReceiver&lt;MySignal&gt;
+	/// {
+	/// 	public Task ReceiveSignalAsync(MySignal signal)
+	/// 	{
+	/// 		Debug.Log("Received signal: {signal}", signal);
+	/// 		return Task.CompletedTask;
+	/// 	}
+	/// }
+	/// </code>
+	/// </summary>
 	Task ReceiveSignalAsync(TSignal signal);
 }
