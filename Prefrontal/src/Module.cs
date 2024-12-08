@@ -19,6 +19,7 @@ public abstract class Module
 	/// The agent that this module belongs to.
 	/// </summary>
 	public Agent Agent { get; internal set; } = null!;
+	protected internal ILogger Debug => Agent.Debug;
 
 	/// <summary>
 	/// Initializes the module.
@@ -29,5 +30,22 @@ public abstract class Module
 	protected internal virtual void Initialize()
 	{
 
+	}
+	
+	/// <inheritdoc cref="Agent.SendSignalAsync{TSignal}(TSignal)"/>
+	protected Task SendSignalAsync<TSignal>(TSignal signal)
+		=> Agent.SendSignalAsync(signal);
+
+	/// <inheritdoc cref="Agent.SendSignal{TSignal}(TSignal)"/>
+	protected void SendSignal<TSignal>(TSignal signal)
+		=> Task.Run(() => Agent.SendSignalAsync(signal));
+
+	public override string ToString()
+	{
+		var name = GetType().Name;
+		if(name.EndsWith("Module"))
+			name = name[..^6];
+		
+		return name;
 	}
 }
