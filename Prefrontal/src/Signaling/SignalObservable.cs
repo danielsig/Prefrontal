@@ -1,7 +1,12 @@
 namespace Prefrontal.Signaling;
 
 /// <summary>
-/// Instantiated by <see cref="Signals{TSignal}"/> to allow subscribing to signals of a specific type.
+/// Instantiated by <see cref="Agent.ObserveSignals{TSignal}()"/>
+/// and <see cref="Agent.ObserveSignals{TSignal}(out IObservable{TSignal})"/>
+/// which enables subscribing to signals of the given type.
+/// <para>
+/// 	This is an internal class and should not be used directly.
+/// </para>
 /// </summary>
 internal record SignalObservable<TSignal>(Agent Agent) : IObservable<TSignal>
 {

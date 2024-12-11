@@ -15,10 +15,18 @@ public static class XType
 		if(type is null)
 			return "null";
 		
+		// primitive types
 		int index = (int)Type.GetTypeCode(type);
 		if(index > 2 && index < 19 && !type.IsEnum)
 			return _PRIMITIVE_NAMES[index];
 
+		// common case
+		if(!type.IsArray
+		&& !type.IsGenericType
+		&& !type.IsNested)
+			return type.Name;
+
+		// recursive
 		var builder = new StringBuilder(100);
 		type.ToVerboseStringRecursive(builder);
 		return builder.ToString();

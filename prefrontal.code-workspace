@@ -5,14 +5,80 @@
 		}
 	],
 	"settings": {
-		"files.insertFinalNewline": true,
+		"todo-tree.general.statusBar": "tags",
+		"todo-tree.general.tags": [
+			"TODO",
+			"CONCERN",
+			"BAD",
+		],
+		"todo-tree.highlights.customHighlight": {
+			"TODO": {
+				"icon": "checkbox",
+				"type": "tag",
+				"background": "#FF8C00",
+				"foreground": "#000000",
+				"iconColour": "#FF8C00",
+			},
+			"CONCERN":{
+				"icon": "comment",
+				"type": "tag",
+				"background": "#FF5500",
+				"foreground": "#000000",
+				"iconColour": "#FF5500",
+			},
+			"BAD": {
+				"icon": "alert",
+				"type": "text",
+				"foreground": "#FF0000",
+				"background": "#000000",
+				"iconColour": "#FF0000",
+				"iconColourDark": "#FF0000",
+			},
+		},
+		"better-comments.tags": [
+			{
+				"tag": "concern",
+				"color": "#FF5500",
+			},
+			{
+				"tag": "!",
+				"color": "#FF2D00",
+			},
+			{
+				"tag": "?",
+				"color": "#3498DB",
+			},
+			{
+				"tag": "//",
+				"color": "#474747",
+				"strikethrough": true,
+			},
+			{
+				"tag": "todo",
+				"color": "#FF8C00",
+			},
+			{
+				"tag": "*",
+				"color": "#98C379",
+			}
+		],
 		"editor.insertSpaces": false,
 		"editor.detectIndentation": false,
+		"editor.tabSize": 4,
+		"editor.indentSize": "tabSize",
+		"[csharp]": {
+			"editor.defaultFormatter": "ms-dotnettools.csharp",
+			"editor.comments.insertSpace": true,
+		},
+		"files.insertFinalNewline": true,
 		"files.eol": "\n",
 		"files.exclude": {
 			"bin": true,
 			"obj": true
 		},
+		"cSpell.ignorePaths": [
+			"*.code-workspace",
+		],
 		"cSpell.words": [
 		],
 	},
@@ -22,8 +88,6 @@
 			"dbaeumer.vscode-eslint",
 			"ue.alphabetical-sorter",
 			"ms-dotnettools.csharp",
-			"ms-dotnettools.csdevkit",
-			"k--kato.docomment",
 			"streetsidesoftware.code-spell-checker",
 			"giflens.giflens",
 			"shardulm94.trailing-spaces",
@@ -31,8 +95,9 @@
 			"fausto95.swap",
 			"searking.preview-vscode",
 			"christian-kohler.npm-intellisense",
-			"pflannery.vscode-versionlens"
-			// c-spell: enable
+			"pflannery.vscode-versionlens",
+			"edwinhuish.better-comments-next",
+			"gruntfuggly.todo-tree"
 		]
 	}
 }

@@ -17,3 +17,8 @@ article > p:first-of-type + h1
 {
 	display: inline;
 }
+
+code
+{
+	tab-size: 2em;
+}

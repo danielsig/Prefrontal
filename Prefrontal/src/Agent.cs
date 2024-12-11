@@ -176,7 +176,9 @@ public class Agent : IDisposable
 		Func<Agent, Module>? createModule = null
 	)
 	{
-		ThrowIfDisposed();
+		if(State is Disposed or Disposing)
+			throw new ObjectDisposedException("Cannot add modules to a disposed agent.");
+		
 		ArgumentNullException.ThrowIfNull(type);
 
 		var typeData = GetModuleTypeData(type);
@@ -235,12 +237,6 @@ public class Agent : IDisposable
 				ex
 			);
 		}
-	}
-
-	private void ThrowIfDisposed()
-	{
-		if(State is Disposed or Disposing)
-			throw new InvalidOperationException("Cannot add modules to a disposed agent.");
 	}
 
 	/// <summary>
@@ -407,13 +403,62 @@ public class Agent : IDisposable
 	/// </returns>
 	public bool RemoveModule(Type type)
 	{
-		var removed = _modules.Extract(c => c.GetType() == type);
-		foreach(var component in removed)
-			if(removed is IDisposable disposable)
-				disposable.Dispose();
-		foreach(var list in SignalProcessorPriorityPerType.Values)
-			list.RemoveAll(removed.Contains);
-		return removed.Count > 0;
+		if(State is Initializing)
+			throw new InvalidOperationException(
+				"Cannot remove modules from an agent while it's initializing."
+			);
+		
+		if(type is null
+		|| State is Disposed or Disposing
+		|| _modules.Where(c => c.GetType() == type).ToList() is not List<Module> removed
+		|| removed.Count == 0)
+			return false;
+
+		List<(string module, Exception error)>? errors = null;
+		
+		foreach(var module in removed)
+			try
+			{
+				if(module is IDisposable disposable)
+					disposable.Dispose();
+			}
+			catch(InvalidOperationException ex)
+			{
+				// handle when the module cancels the removal
+				Debug.LogWarning(
+					"Module {module} cancelled removal from agent {agent}: {reason}",
+					module,
+					this,
+					ex.Message
+				);
+				removed.Remove(module);
+			}
+			catch(Exception error)
+			{
+				(errors ??= []).Add((module.ToString(), error));
+			}
+		if(removed.Count > 0)
+		{
+			foreach(var module in removed)
+				module.Agent = null!;
+			_modules.RemoveAll(removed.Contains);
+			foreach(var list in SignalProcessorPriorityPerType.Values)
+				list.RemoveAll(removed.Contains);
+		}
+		if(errors?.Count > 0)
+			throw new AggregateException(
+				$@"Failed to dispose of {
+					errors.Count
+				} modules on agent: {
+					Name
+				}: {
+					errors
+						.Select(x => x.module)
+						.JoinVerbose()
+				}",
+				errors.Select(x => x.error)
+			);
+		return false;
 	}
 
 	/// <summary>
@@ -424,14 +469,44 @@ public class Agent : IDisposable
 	/// <returns>True if the module was found and removed, False otherwise.</returns>
 	public bool RemoveModule(Module module)
 	{
+		if(State is Initializing)
+			throw new InvalidOperationException(
+				"Cannot remove modules from an agent while it's initializing."
+			);
+		
 		if(module is null
-		|| !_modules.Remove(module))
+		|| State is Disposed or Disposing
+		|| _modules.IndexOf(module) is var index && index < 0)
 			return false;
-		if(module is IDisposable disposable)
-			disposable.Dispose();
-		foreach(var list in SignalProcessorPriorityPerType.Values)
-			list.Remove(module);
-		return true;
+		
+		try
+		{
+			if(module is IDisposable disposable)
+				disposable.Dispose();
+			return true;
+		}
+		catch(InvalidOperationException ex)
+		{
+			// handle when the module cancels the removal
+			Debug.LogWarning(
+				"Module {module} cancelled removal from agent {agent}: {reason}",
+				module.GetType().ToVerboseString(),
+				this,
+				ex.Message
+			);
+			index = -1;
+			return false;
+		}
+		finally
+		{
+			if(index >= 0) // if the module did not cancel the removal
+			{
+				_modules.RemoveAt(index);
+				module.Agent = null!;
+				foreach(var list in SignalProcessorPriorityPerType.Values)
+					list.Remove(module);
+			}
+		}
 	}
 
 	#endregion
@@ -533,32 +608,57 @@ public class Agent : IDisposable
 	#region Overridable Methods
 	/// <summary>
 	/// Initializes all modules on the agent in the order they were added.
+	/// You cannot dispose of the agent while it is initializing.
 	/// </summary>
+	/// <exception cref="InvalidOperationException">
+	/// 	Thrown when the agent has already been disposed of
+	/// 	or if any of the modules call attempt to dispose of the agent.
+	/// </exception>
+	/// <exception cref="AggregateException">
+	/// 	Thrown when one or more modules fail to initialize.
+	/// </exception>
 	/// <returns>The current agent.</returns>
 	public virtual Agent Initialize()
 	{
-		ThrowIfDisposed();
-		if(State != Uninitialized)
+		if(State is Disposed or Disposing)
+			throw new ObjectDisposedException("Cannot initialize a disposed agent.");
+		
+		if(State is Initialized or Initializing)
 			return this;
 		
+		using var _ = Debug.BeginScope("Initializing Agent {Name}", Name);
 		State = Initializing;
-		var exceptions = new List<Exception>();
-		foreach(var module in _modules.ToList())
-			try
-			{
-				module.Initialize();
-			}
-			catch(Exception ex)
-			{
-				exceptions.Add(ex);
-			}
-		State = Initialized;
-		if(exceptions.Count > 0)
-			throw new AggregateException(
-				$"Failed to initialize modules on agent {Name}.",
-				exceptions
-			);
-		return this;
+		try
+		{
+			List<(string module, Exception error)>? errors = null;
+			foreach(var module in _modules.ToList())
+				try
+				{
+					module.Initialize();
+				}
+				catch(Exception error)
+				{
+					(errors ??= []).Add((module.ToString(), error));
+				}
+			if(errors?.Count > 0)
+				throw new AggregateException(
+					$@"Failed to initialize {
+						errors.Count
+					} modules on agent: {
+						Name
+					}: {
+						errors
+							.Select(x => x.module)
+							.JoinVerbose()
+					}",
+					errors.Select(x => x.error)
+				);
+			return this;
+		}
+		finally
+		{
+			State = Initialized;
+		}
 	}
 
 	/// <summary>
@@ -568,26 +668,50 @@ public class Agent : IDisposable
 	/// </summary>
 	public virtual void Dispose()
 	{
+		if(State is Disposed or Disposing)
+			return;
+		
+		if(State is Initializing)
+			throw new InvalidOperationException(
+				"Cannot dispose of an agent while it is initializing."
+			);
+
+		using var _ = Debug.BeginScope("Disposing of Agent {Name}", Name);
 		State = Disposing;
 		try
 		{
-			var exceptions = new List<Exception>();
-			foreach(var module in _modules.ToList())
+			List<(string module, Exception error)>? errors = null;
+
+			// dispose of the modules in reverse order
+			var modulesReversed = new List<Module>(_modules.Reverse<Module>());
+			foreach(var module in modulesReversed)
+			{
 				if(module is IDisposable disposable)
 					try
 					{
 						disposable.Dispose();
 					}
-					catch(Exception ex)
+					catch(Exception error)
 					{
-						exceptions.Add(ex);
+						if(error is not InvalidOperationException) // ignore cancellation
+							(errors ??= []).Add((module.ToString(), error));
 					}
+				module.Agent = null!;
+			}
 			_modules.Clear();
 			SignalProcessorPriorityPerType.Clear();
-			if(exceptions.Count > 0)
+			if(errors?.Count > 0)
 				throw new AggregateException(
-					$"Failed to dispose of modules on agent {Name}.",
-					exceptions
+					$@"Failed to dispose of {
+						errors.Count
+					} modules on agent: {
+						Name
+					}: {
+						errors
+							.Select(x => x.module)
+							.JoinVerbose()
+					}",
+					errors.Select(x => x.error)
 				);
 		}
 		finally
@@ -612,7 +736,7 @@ public class Agent : IDisposable
 
 	#endregion
 
-	#region SendSignal
+	#region Signals
 
 	internal readonly ConcurrentDictionary<Type, List<Module>> SignalProcessorPriorityPerType = [];
 
@@ -628,12 +752,15 @@ public class Agent : IDisposable
 	/// <returns>A task that represents the asynchronous operation.</returns>
 	public async Task SendSignalAsync<TSignal>(TSignal signal)
 	{
+		if(State is Disposed or Disposing)
+			throw new ObjectDisposedException("Disposed agents cannot send signals.");
+		
 		var order = SignalProcessorPriorityPerType.GetValueOrDefault(typeof(TSignal));
 		var processors = _modules.OfType<ISignalProcessor<TSignal>>();
 		if(order is not null)
 			processors = processors.OrderBy(p => order.IndexOf((Module)p) switch { -1 => int.MaxValue, var i => i });
 		
-		var list = processors.ToList();
+		var list = new List<ISignalProcessor<TSignal>>(processors);
 		var index = 0;
 		foreach(var processor in list)
 			try
@@ -682,10 +809,96 @@ public class Agent : IDisposable
 	/// <typeparam name="TSignal">The type of signal to send.</typeparam>
 	public void SendSignal<TSignal>(TSignal signal)
 		=> Task.Run(() => SendSignalAsync(signal));
-	
-	/// <inheritdoc cref="Signals{TSignal}"/>
-	public Signals<TSignal> SignalsOfType<TSignal>()
-		=> new(this);
+
+	/// <summary>
+	/// Specifies the order in which modules must process signals of the given type.
+	/// <br/>
+	/// Example:
+	/// <code>
+	/// var myAgent = new Agent()
+	/// 	.AddModule&lt;LastModule&gt;()
+	/// 	.AddModule&lt;ThirdModule&gt;()
+	/// 	.AddModule&lt;SecondModule&gt;()
+	/// 	.AddModule&lt;FirstModule&gt;()
+	/// 	.SetSignalProcessingOrder&lt;MySignal&gt;(a =>
+	/// 	[
+	/// 		a.GetModule&lt;FirstModule&gt;(),
+	/// 		a.GetModule&lt;SecondModule&gt;(),
+	/// 		a.GetModule&lt;ThirdModule&gt;(),
+	/// 		a.GetModule&lt;LastModule&gt;(),
+	/// 	])
+	/// 	.Initialize();
+	/// </code>
+	/// </summary>
+	/// <param name="getModuleOrder">A function that returns the order in which modules should process the signals.</param>
+	/// <seealso cref="ISignalInterceptor{TSignal}"/>
+	/// <seealso cref="ISignalReceiver{TSignal}"/>
+	public Agent SetSignalProcessingOrder<TSignal>(Func<Agent, List<Module>> getModuleOrder)
+	{
+		var moduleOrder = getModuleOrder(this);
+		foreach(var module in moduleOrder)
+		{
+			if(module is not ISignalProcessor<TSignal>)
+				throw new ArgumentException($"Module {module} does not implement {typeof(ISignalProcessor<TSignal>).ToVerboseString()}.");
+			if(module.Agent != this)
+				throw new ArgumentException($"Module {module} does not belong to the agent.");
+		}
+		var type = typeof(TSignal);
+		if(SignalProcessorPriorityPerType.TryGetValue(type, out var before))
+			SignalProcessorPriorityPerType[type] = [.. moduleOrder, .. before.Except(moduleOrder)];
+		else
+			SignalProcessorPriorityPerType[type] = [.. moduleOrder];
+		return this;
+	}
+
+	/// <summary>
+	/// Retrieves an <see cref="IObservable{TSignal}"/>
+	/// that emits all future signals of type <typeparamref name="TSignal"/>
+	/// that are sent on the agent.
+	/// <br/>
+	/// Use this method when configuring the agent in a method chain. Example:
+	/// <code>
+	/// 	var myAgent = new Agent()
+	/// 		.AddModule&lt;MyModule&gt;()
+	/// 		.ObserveSignals&lt;MySignal&gt;(out var mySignals)
+	/// 		.Initialize();
+	/// 	mySignals.Subscribe(signal => Console.WriteLine($"Received signal: {signal}"));
+	/// 	myAgent.SendSignal(new MySignal());
+	/// </code>
+	/// <br/>
+	/// When not configuring the agent it's recommended to instead
+	/// use the <seealso cref="ObserveSignals{TSignal}()"/> method.
+	/// </summary>
+	/// <param name="observable">A reference to assign the observable to.</param>
+	/// <returns>The agent for further configuration.</returns>
+	public Agent ObserveSignals<TSignal>(out IObservable<TSignal> observable)
+	{
+		observable = new SignalObservable<TSignal>(this);
+		return this;
+	}
+
+	/// <summary>
+	/// Returns an <see cref="IObservable{TSignal}"/>
+	/// that emits all future signals of type <typeparamref name="TSignal"/>
+	/// that are sent on the agent.
+	/// <br/>
+	/// Example:
+	/// <code>
+	/// 	var myAgent = new Agent()
+	/// 		.AddModule&lt;MyModule&gt;()
+	/// 		.Initialize();
+	/// 	myAgent
+	/// 		.ObserveSignals&lt;MySignal&gt;()
+	/// 		.Subscribe(signal => Console.WriteLine($"Received signal: {signal}"));
+	/// 	myAgent.SendSignal(new MySignal());
+	/// </code>
+	/// <br/>
+	/// Use the <seealso cref="ObserveSignals{TSignal}(out IObservable{TSignal})"/>
+	/// method instead when configuring the agent in a method chain.
+	/// </summary>
+	/// <returns>The observable that emits specified signal type.</returns>
+	public IObservable<TSignal> ObserveSignals<TSignal>()
+		=> new SignalObservable<TSignal>(this);
 
 	#endregion
 }
