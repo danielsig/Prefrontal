@@ -60,7 +60,6 @@ public class Agent : IDisposable
 			.BuildServiceProvider()
 			.UseFor(s => s.GetService<ILoggerProvider>()?.CreateLogger("Agent"))
 			?? throw new InvalidOperationException("No logger found.");
-
     
 	/// <summary>
 	/// The name of the agent.
@@ -184,7 +183,7 @@ public class Agent : IDisposable
 		var typeData = GetModuleTypeData(type);
 
 		// check if the module is a singleton and if it already exists
-		if (typeData.IsSingleton
+		if(typeData.IsSingleton
 		&& GetModuleOrDefault(type) is Module singleton)
 		{
 			configure?.Invoke(singleton); // configure the singleton
@@ -419,6 +418,7 @@ public class Agent : IDisposable
 		foreach(var module in removed)
 			try
 			{
+				// TODO: Throw InvalidOperationException if module required by another module
 				if(module is IDisposable disposable)
 					disposable.Dispose();
 			}
@@ -458,7 +458,7 @@ public class Agent : IDisposable
 				}",
 				errors.Select(x => x.error)
 			);
-		return false;
+		return removed.Count > 0;
 	}
 
 	/// <summary>
