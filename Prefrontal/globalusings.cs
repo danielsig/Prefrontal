@@ -8,3 +8,4 @@ global using Prefrontal.Common.Extensions;
 global using Prefrontal.Modules;
 global using Prefrontal.Signaling;
 global using Prefrontal.Attributes;
+global using static Prefrontal.Common.FunctionUtils;

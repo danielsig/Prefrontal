@@ -219,7 +219,7 @@ public class Agent : IDisposable
 			
 			return module;
 		}
-		catch (Exception ex)
+		catch(Exception ex)
 		{
 			// rollback the changes
 			var modulesToRemove = _modules.Except(modulesBefore).ToList();
@@ -704,7 +704,7 @@ public class Agent : IDisposable
 				throw new AggregateException(
 					$@"Failed to dispose of {
 						errors.Count
-					} modules on agent: {
+					} modules on Agent {
 						Name
 					}: {
 						errors
@@ -721,19 +721,143 @@ public class Agent : IDisposable
 		}
 	}
 
-	public override string ToString()
-		=> $@"{
-			Name.NullIfWhiteSpace() ?? "Agent"
-		} {(
-			string.IsNullOrWhiteSpace(Description)
-				? "" :
-				$"({Description})"
-		)}{
+	/// <summary>
+	/// Returns a single-line string representation of the agent and its modules.<br/>
+	/// If you need a more verbose multiline string representation, use <see cref="ToStringPretty"/> instead.
+	/// <para>This method calls the <see cref="Module.ToString"/> of each module.</para>
+	/// Example:
+	/// <code>
+	/// 	Console.WriteLine(
+	/// 		new Agent
+	/// 		{
+	/// 			Name = "foobar",
+	/// 			Description = "A placeholder agent",
+	/// 		}
+	/// 		.AddModule&lt;FooModule&gt;()
+	/// 		.AddModule&lt;BarModule&gt;()
+	/// 		.ToString()
+	/// 	);
+	/// 	// Output:
+	/// 	// Agent foobar { Foo, Bar }
+	/// </code>
+	/// </summary>
+	/// <returns>
+	/// 	A string in the format of
+	/// 	"Agent <see cref="Name"/> { <see cref="Modules"/>  }"
+	/// </returns>
+	public override string ToString() =>
+		$@"Agent {
+			Name?.NullIfWhiteSpace()
+				?.WithMaxLengthSuffixed(20)
+				?.Thru(x => x + ' ')
+			?? ""
+		}{{ {
+			_modules
+				.Select(x
+					=> x.ToString()?.Before('\n').WithMaxLengthSuffixed(20)
+					?? x.GetType().Name
+				)
+				.Join()
+		} }}";
+
+	/// <summary>
+	/// Returns a multiline string representation of the agent and its modules.<br/>
+	/// Unlike <see cref="ToString"/> this method includes the <see cref="Description"/>.
+	/// <para>This method calls the <see cref="Module.ToString"/> of each module.</para>
+	/// Examples:
+	/// <br/>
+	/// Description shorter than 50 characters
+	/// <code>
+	/// 	Console.WriteLine(
+	/// 		new Agent
+	/// 		{
+	/// 			Name = "foobar",
+	/// 			Description = "A placeholder agent",
+	/// 		}
+	/// 		.AddModule&lt;FooModule&gt;()
+	/// 		.AddModule&lt;BarModule&gt;()
+	/// 		.ToStringPretty()
+	/// 	);
+	/// 	// Output:
+	/// 	// Agent foobar (A placeholder agent)
+	/// 	//   ├─ Foo
+	/// 	//   └─ Bar
+	/// </code>
+	/// Description longer than 50 characters
+	/// <code>
+	/// 	Console.WriteLine(
+	/// 		new Agent
+	/// 		{
+	/// 			Name = "foobar",
+	/// 			Description = "A placeholder agent with a seriously long description that needs to be wrapped around",
+	/// 		}
+	/// 		.AddModule&lt;FooModule&gt;()
+	/// 		.AddModule&lt;BarModule&gt;()
+	/// 		.ToStringPretty()
+	/// 	);
+	/// 	// Output:
+	/// 	// Agent foobar
+	/// 	// ╭─────────────────────────────────────────────╮
+	/// 	// │ A placeholder agent with a seriously long   │
+	/// 	// │ description that needs to be wrapped around │
+	/// 	// ╰─────────────────────────────────────────────╯
+	/// 	//   ├─ Foo
+	/// 	//   └─ Bar
+	/// </code>
+	/// </summary>
+	/// <param name="maxWidth">
+	/// 	The maximum width of each line in the output.
+	/// 	Default is 50 characters.
+	/// </param>
+	/// <returns>
+	/// 	A string representation of the agent which includes
+	/// 	the <see cref="Name" />, <see cref="Description"/>
+	/// 	and <see cref="Modules"/>.
+	/// </returns>
+	public string ToStringPretty(int maxWidth = 50)
+	{
+		maxWidth = maxWidth.OrAtLeast(10);
+		var name =
+			(
+				string.IsNullOrWhiteSpace(Name)
+					? "Anonymous Agent"
+					: "Agent " + Name
+			)
+			.WithMaxLengthSuffixed(maxWidth);
+		
+		var description = string.IsNullOrWhiteSpace(Description)
+			? ""
+			: Description.Length < (maxWidth - name.Length - 3) && !Description.Contains('\n')
+				? $" ({Description})" // single line description
+				: $"\n{Description.WrapInsideBox(maxWidth)}"; // multi line description, with box drawing bubble around it
+
+		return $@"{name}{description}{
 			_modules.Count switch { 0 => "", 1 => "\n  └─ ", _ => "\n  ├─ " }
 		}{
-			_modules.JoinVerbose("\n  ├─ ", "\n  └─ ")
+			_modules
+				.Select(x
+					=> x.ToString()
+					?? x.GetType().Name
+				)
+				.ToList()
+				.Tap(list =>
+				{
+					for(var i = 0; i < list.Count; i++)
+						list[i] = list[i]
+							.SplitAndWrapLines(maxWidth - 5)
+							.Join(i < list.Count - 1
+								? "\n  │  "
+								: "\n     "
+							);
+				})
+				.JoinVerbose(
+					"\n  ├─ ",
+					"\n  └─ "
+				)
 		}";
-
+	}
+	
+	
 	#endregion
 
 	#region Signals
@@ -745,6 +869,10 @@ public class Agent : IDisposable
 	/// <see cref="ISignalReceiver{TSignal}"/>
 	/// or
 	/// <see cref="ISignalInterceptor{TSignal}"/>.
+	/// <br/>
+	/// It's perfectly fine to add and remove modules during signal processing,
+	/// but be aware that modules that are removed will not receive the signal
+	/// and modules that are added will only receive future signals, i.e. sent after they were added.
 	/// </summary>
 	/// <seealso cref="SendSignal{TSignal}"/>
 	/// <param name="signal">The signal to send.</param>
@@ -765,6 +893,9 @@ public class Agent : IDisposable
 		foreach(var processor in list)
 			try
 			{
+				if(processor is Module { Agent: null })
+					continue; // skip modules that have been removed during signal processing
+				
 				switch(processor)
 				{
 					case ISignalReceiver<TSignal> receiver:
