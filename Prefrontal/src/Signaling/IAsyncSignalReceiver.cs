@@ -1,17 +1,24 @@
 namespace Prefrontal.Signaling;
 
 /// <summary>
-/// <see cref="Module"/>s need to implement
-/// <see cref="IAsyncSignalReceiver{TSignal}" />
-/// or <see cref="ISignalReceiver{TSignal}" />
-/// to receive signals of that type without intercepting them.
-///
-/// Modules send signals by
-/// calling <see cref="Module.SendSignal{TSignal}(TSignal)"/>.
-/// or <see cref="Module.SendSignalAsync{TSignal}(TSignal)"/>
-///
-/// The order of interception is determined by the order in which modules are added to the agent
-/// unless you specify a different order using the <see cref="Agent.SetSignalProcessingOrder{TSignal}(Func{Agent, List{Module}})"/> method.
+/// <list type="bullet">
+/// 	<item>
+/// 		<see cref="Module"/>s need to implement
+/// 		<see cref="IAsyncSignalReceiver{TSignal}" />
+/// 		or <see cref="ISignalReceiver{TSignal}" />
+/// 		to receive signals of that type.
+/// 	</item>
+/// 	<item>
+/// 		Modules send signals by
+/// 		calling <see cref="Module.SendSignal{TSignal}(TSignal)"/>
+/// 		or <see cref="Module.SendSignalAsync{TSignal}(TSignal)"/>.
+/// 	</item>
+/// 	<item>
+/// 		Signal processors are executed in the order they were added to the agent,
+/// 		unless you specify a different order by calling
+/// 		<see cref="Agent.SetSignalProcessingOrder{TSignal}(Func{Agent, List{Module}})"/>.
+/// 	</item>
+/// </list>
 /// </summary>
 /// <typeparam name="TSignal">The type of signals to receive.</typeparam>
 public interface IAsyncSignalReceiver<TSignal> : IBaseSignalProcessor<TSignal>
@@ -22,6 +29,7 @@ public interface IAsyncSignalReceiver<TSignal> : IBaseSignalProcessor<TSignal>
 	/// via <see cref="Module.SendSignal{TSignal}(TSignal)"/>
 	/// or <see cref="Module.SendSignalAsync{TSignal}(TSignal)"/>.
 	/// <br/>
+	///
 	/// Example:
 	/// <code>
 	/// public class MySignalLoggerModule : Module, IAsyncSignalReceiver&lt;MySignal&gt;

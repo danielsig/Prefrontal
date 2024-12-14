@@ -1,20 +1,28 @@
 namespace Prefrontal.Signaling;
 
 /// <summary>
-/// <see cref="Module"/>s need to implement
-/// <see cref="IAsyncSignalInterceptor{TSignal}" />
-/// or <see cref="ISignalInterceptor{TSignal}" />
-/// to intercept signals of that type.
-///
-/// Modules send signals by
-/// calling <see cref="Module.SendSignal{TSignal}(TSignal)"/>
-/// or <see cref="Module.SendSignalAsync{TSignal}(TSignal)"/>.
-///
-/// The order of interception is determined by the order in which modules are added to the agent
-/// unless you specify a different order using the <see cref="Agent.SetSignalProcessingOrder{TSignal}(Func{Agent, List{Module}})"/> method.
-///
-/// Interceptors can modify the signal or stop it from getting processed
-/// by subsequent modules via <c>return <see cref="Intercept.StopProcessingSignal">Intercept.StopProcessingSignal</see> </c>.
+/// <list type="bullet">
+/// 	<item>
+/// 		<see cref="Module"/>s need to implement
+/// 		<see cref="IAsyncSignalInterceptor{TSignal}" />
+/// 		or <see cref="ISignalInterceptor{TSignal}" />
+/// 		to intercept signals of that type.
+/// 	</item>
+/// 	<item>
+/// 		Modules send signals by
+/// 		calling <see cref="Module.SendSignal{TSignal}(TSignal)"/>
+/// 		or <see cref="Module.SendSignalAsync{TSignal}(TSignal)"/>.
+/// 	</item>
+/// 	<item>
+/// 		Signal processors are executed in the order they were added to the agent,
+/// 		unless you specify a different order by calling
+/// 		<see cref="Agent.SetSignalProcessingOrder{TSignal}(Func{Agent, List{Module}})"/>.
+/// 	</item>
+/// 	<item>
+/// 		Interceptors can modify the signal or stop it from getting processed
+/// 		by subsequent modules via <c>return <see cref="Intercept.StopProcessingSignal">Intercept.StopProcessingSignal</see> </c>.
+/// 	</item>
+/// </list>
 /// </summary>
 /// <typeparam name="TSignal">The type of signals to intercept.</typeparam>
 public interface IAsyncSignalInterceptor<TSignal> : IBaseSignalProcessor<TSignal>
@@ -24,14 +32,17 @@ public interface IAsyncSignalInterceptor<TSignal> : IBaseSignalProcessor<TSignal
 	/// via <see cref="Module.SendSignal{TSignal}(TSignal)"/>
 	/// or <see cref="Module.SendSignalAsync{TSignal}(TSignal)"/>.
 	/// <br/>
+	///
 	/// Interceptors can modify the signal or stop it from getting processed by subsequent modules.
 	/// They can return either the same input <paramref name="signal"/>
 	/// or a new <typeparamref name="TSignal"/> instance
 	/// which will then get processed by subsequent modules.
 	/// <br/>
+	///
 	/// To stop subsequent modules from processing the signal
 	/// simply <c>return <see cref="Intercept.StopProcessingSignal">Intercept.StopProcessingSignal</see> </c>.
 	/// <br/>
+	///
 	/// Examples:
 	/// <code>
 	/// public class MySignalInterceptorModule : Module, IAsyncSignalInterceptor&lt;MySignal&gt;

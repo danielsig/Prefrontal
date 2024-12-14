@@ -23,15 +23,20 @@ namespace Prefrontal;
 ///		</item>
 ///		<item>
 ///			Modules can send signals to other modules
-///			using the <see cref="SendSignalAsync{TSignal}(TSignal)"/> method
-///			or the <see cref="SendSignal{TSignal}(TSignal)"/> method.
+///			using the <see cref="SendSignal{TSignal}(TSignal)"/> method
+///			or the <see cref="SendSignalAsync{TSignal}(TSignal)"/> method.
 ///			These signals can be of any type,
 ///			but it is recommended to create your own signal types.
 ///		</item>
 ///		<item>
-///			Signals are received by modules
-///			that implement either the <see cref="IAsyncSignalInterceptor{TSignal}"/>
-///			or <see cref="IAsyncSignalReceiver{TSignal}"/> interface of the same signal type.
+///			Signals are processed by modules
+///			that implement one of the following:
+/// 		<list type="bullet">
+/// 			<item><see cref="ISignalReceiver{TSignal}"/></item>
+/// 			<item><see cref="ISignalInterceptor{TSignal}"/></item>
+/// 			<item><see cref="IAsyncSignalReceiver{TSignal}"/></item>
+/// 			<item><see cref="IAsyncSignalInterceptor{TSignal}"/></item>
+/// 		</list>
 ///			These interfaces have a single method that gets called with the signal as a parameter.
 ///		</item>
 ///		<item>

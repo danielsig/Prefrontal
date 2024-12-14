@@ -6,10 +6,11 @@ namespace Prefrontal.Signaling;
 /// meaning signal interceptor methods can return the signal object directly.
 /// To stop the signal from getting processed by subsequent modules,
 /// simply <c>return <see cref="Intercept.StopProcessingSignal">Intercept.StopProcessingSignal</see></c>.
-/// <br/>
-/// and <see cref="ISignalInterceptor{TSignal}.InterceptSignal(TSignal)"/>
-/// See <see cref="IAsyncSignalInterceptor{TSignal}.InterceptSignalAsync(TSignal)"/>
-/// for more information.
+/// <para>
+/// 	See <see cref="ISignalInterceptor{TSignal}.InterceptSignal(TSignal)"/>
+/// 	and <see cref="IAsyncSignalInterceptor{TSignal}.InterceptSignalAsync(TSignal)"/>
+/// 	for more information.
+/// </para>
 /// </summary>
 /// <typeparam name="TSignal">The type of signal being intercepted.</typeparam>
 public readonly struct Intercept<TSignal>
