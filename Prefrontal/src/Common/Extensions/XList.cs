@@ -1,5 +1,6 @@
 namespace Prefrontal.Common.Extensions;
 
+/// <summary> Provides extension methods for <see cref="List{T}"/> and <see cref="IList{T}"/>. </summary>
 public static class XList
 {
 	/// <summary>
@@ -8,7 +9,7 @@ public static class XList
 	/// </summary>
 	/// <param name="list">The list to extract elements from.</param>
 	/// <param name="predicate">The predicate to test elements against.</param>
-	/// <returns>The elements that were removed</returns>
+	/// <returns>The elements that were removed.</returns>
 	public static List<T> Extract<T>(this List<T> list, Func<T, bool> predicate)
 	{
 		var foo = new List<int>{1, 2, 3};
@@ -38,9 +39,9 @@ public static class XList
 	/// Removes the first element from the list and returns it
 	/// or <see langword="null"/> if the list is empty.
 	/// </summary>
-	/// <typeparam name="T">The type of the elements in the list</typeparam>
-	/// <param name="list">The list whose first element to remove</param>
-	/// <returns>The first element of the list, or <see langword="null"/> if the list is empty</returns>
+	/// <typeparam name="T">The type of the elements in the list.</typeparam>
+	/// <param name="list">The list whose first element to remove.</param>
+	/// <returns>The first element of the list, or <see langword="null"/> if the list is empty.</returns>
 	public static T? RemoveFirst<T>(this IList<T> list)
 	where T : class
 	{
@@ -69,9 +70,9 @@ public static class XList
 	/// Removes the last element from the list and returns it
 	/// or <see langword="null"/> if the list is empty.
 	/// </summary>
-	/// <typeparam name="T">The type of the elements in the list</typeparam>
-	/// <param name="list">The list whose last element to remove</param>
-	/// <returns>The last element of the list, or <see langword="null"/> if the list is empty</returns>
+	/// <typeparam name="T">The type of the elements in the list.</typeparam>
+	/// <param name="list">The list whose last element to remove.</param>
+	/// <returns>The last element of the list, or <see langword="null"/> if the list is empty.</returns>
 	public static T? RemoveLast<T>(this IList<T> list)
 	where T : class
 	{

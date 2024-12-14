@@ -1,6 +1,6 @@
 namespace Prefrontal.Modules;
 
-internal class SignalObserverModule<TSignal>(List<IObserver<TSignal>> observers) : Module, ISignalReceiver<TSignal>, IDisposable
+internal class SignalObserverModule<TSignal>(List<IObserver<TSignal>> observers) : Module, IAsyncSignalReceiver<TSignal>, IDisposable
 {
 	internal List<IObserver<TSignal>> Observers = observers;
 	public Task ReceiveSignalAsync(TSignal signal)

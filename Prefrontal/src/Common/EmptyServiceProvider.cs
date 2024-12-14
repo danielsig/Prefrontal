@@ -1,13 +1,9 @@
 namespace Prefrontal.Common;
 
-/// <summary>
-/// Empty service provider.
-/// </summary>
+/// <summary> Empty service provider. </summary>
 public sealed class EmptyServiceProvider : IServiceProvider
 {
-	/// <summary>
-	/// Singleton instance.
-	/// </summary>
+	/// <summary> Singleton instance. </summary>
 	public static EmptyServiceProvider Instance { get; } = new();
 
 	/// <inheritdoc />

@@ -1,12 +1,7 @@
 namespace Prefrontal.Signaling;
 
-/// <summary>
-/// Lets a module receive signals of a specific type.
-/// The order of invocation is determined by the order in which modules are added to the agent
-/// unless you specify a different order using the <see cref="Agent.SetSignalProcessingOrder{TSignal}(Func{Agent, List{Module}})"/> method.
-/// </summary>
-/// <typeparam name="TSignal">The type of signals to receive</typeparam>
-public interface ISignalReceiver<TSignal> : ISignalProcessor<TSignal>
+/// <inheritdoc cref="IAsyncSignalReceiver{TSignal}"/>
+public interface ISignalReceiver<TSignal> : IBaseSignalProcessor<TSignal>
 {
 	/// <summary>
 	/// Receives a signal of type <typeparamref name="TSignal"/>
@@ -18,13 +13,13 @@ public interface ISignalReceiver<TSignal> : ISignalProcessor<TSignal>
 	/// <code>
 	/// public class MySignalLoggerModule : Module, ISignalReceiver&lt;MySignal&gt;
 	/// {
-	/// 	public Task ReceiveSignalAsync(MySignal signal)
+	/// 	public void ReceiveSignal(MySignal signal)
 	/// 	{
 	/// 		Debug.Log("Received signal: {signal}", signal);
-	/// 		return Task.CompletedTask;
 	/// 	}
 	/// }
 	/// </code>
 	/// </summary>
-	Task ReceiveSignalAsync(TSignal signal);
+	/// <param name="signal">The newly received signal.</param>
+	void ReceiveSignal(TSignal signal);
 }

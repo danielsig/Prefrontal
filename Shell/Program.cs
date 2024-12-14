@@ -3,9 +3,6 @@
 Console.OutputEncoding = System.Text.Encoding.UTF8;
 Console.InputEncoding = System.Text.Encoding.UTF8;
 
-Console.WriteLine("First!");
-Console.ReadKey();
-
 Console.WriteLine(
 	new Agent
 	{

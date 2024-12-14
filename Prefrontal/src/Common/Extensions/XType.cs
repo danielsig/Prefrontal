@@ -2,6 +2,8 @@ using System.Text;
 
 namespace Prefrontal.Common.Extensions;
 
+
+/// <summary> Provides extension methods for <see cref="Type"/>. </summary>
 public static class XType
 {
 	/// <summary>

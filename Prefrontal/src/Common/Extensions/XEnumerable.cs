@@ -1,9 +1,9 @@
 using System.Collections;
-using System.Runtime.CompilerServices;
 using System.Text;
 
 namespace Prefrontal.Common.Extensions;
 
+/// <summary> Provides extension methods for <see cref="IEnumerable{T}"/>. </summary>
 public static class XEnumerable
 {
 	/// <summary>
@@ -19,7 +19,7 @@ public static class XEnumerable
 	/// Just like <see cref="Join{T}(IEnumerable{T}, string)"/>, but with a last separator.
 	/// </summary>
 	/// <inheritdoc cref="string.Join(string, IEnumerable{string})" path="/param"/>
-	/// <param name="lastSeparator">The separator to use before the last item</param>
+	/// <param name="lastSeparator">The separator to use before the last item.</param>
 	/// <returns>
 	/// 	A string that consists of the elements of <paramref name="values"/>
 	/// 	delimited by the <paramref name="separator"/> string and finally the <paramref name="lastSeparator"/> string

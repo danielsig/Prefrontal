@@ -31,7 +31,7 @@ public class Agent : IDisposable
 	/// <summary>
 	/// Creates a new agent with the specified <paramref name="serviceProvider"/>.
 	/// </summary>
-	/// <param name="serviceProvider"></param>
+	/// <param name="serviceProvider">The service provider to use when solving dependencies.</param>
 	/// <exception cref="ArgumentNullException"></exception>
 	/// <exception cref="InvalidOperationException"></exception>
 	public Agent(IServiceProvider serviceProvider)
@@ -105,7 +105,7 @@ public class Agent : IDisposable
 	/// </summary>
 	/// <typeparam name="T">
 	/// 	The module type.
-	/// 	This must inherit from <see cref="Prefrontal.Module"/>
+	/// 	This must inherit from <see cref="Prefrontal.Module"/>.
 	/// </typeparam>
 	/// <param name="configure">
 	/// 	(optional) callback to configure the module before it is initialized.
@@ -138,7 +138,7 @@ public class Agent : IDisposable
 	/// </summary>
 	/// <typeparam name="T">
 	/// 	The module type.
-	/// 	This must inherit from <see cref="Prefrontal.Module"/>
+	/// 	This must inherit from <see cref="Prefrontal.Module"/>.
 	/// </typeparam>
 	/// <param name="createModule">
 	/// 	A function that creates the module.
@@ -162,7 +162,7 @@ public class Agent : IDisposable
 	/// <inheritdoc cref="AddModule{T}(Action{T}?)"/>
 	/// <param name="type">
 	/// 	The module type.
-	/// 	This must inherit from <see cref="Prefrontal.Module"/>
+	/// 	This must inherit from <see cref="Prefrontal.Module"/>.
 	/// </param>
 	public Agent AddModule(Type type, Action<Module>? configure = null)
 	{
@@ -378,7 +378,7 @@ public class Agent : IDisposable
 	/// </summary>
 	/// <typeparam name="T">
 	/// 	The module type.
-	/// 	This must inherit from <see cref="Prefrontal.Module"/>
+	/// 	This must inherit from <see cref="Prefrontal.Module"/>.
 	/// </typeparam>
 	/// <returns>
 	/// 	True if at least one module of the given type was found and removed,
@@ -766,7 +766,8 @@ public class Agent : IDisposable
 	/// <para>This method calls the <see cref="Module.ToString"/> of each module.</para>
 	/// Examples:
 	/// <br/>
-	/// Description shorter than 50 characters
+	/// Agent <see cref="Name"/> + <see cref="Description"/>
+	/// fit on one line (does not exceed <paramref name="maxWidth"/>)
 	/// <code>
 	/// 	Console.WriteLine(
 	/// 		new Agent
@@ -783,7 +784,8 @@ public class Agent : IDisposable
 	/// 	//   ├─ Foo
 	/// 	//   └─ Bar
 	/// </code>
-	/// Description longer than 50 characters
+	/// Agent <see cref="Name"/> + <see cref="Description"/> exceed <paramref name="maxWidth"/>
+	/// and <see cref="Description"/> gets wrapped in a box drawing bubble.
 	/// <code>
 	/// 	Console.WriteLine(
 	/// 		new Agent
@@ -807,7 +809,6 @@ public class Agent : IDisposable
 	/// </summary>
 	/// <param name="maxWidth">
 	/// 	The maximum width of each line in the output.
-	/// 	Default is 50 characters.
 	/// </param>
 	/// <returns>
 	/// 	A string representation of the agent which includes
@@ -865,11 +866,13 @@ public class Agent : IDisposable
 	internal readonly ConcurrentDictionary<Type, List<Module>> SignalProcessorPriorityPerType = [];
 
 	/// <summary>
-	/// Sends a signal asynchronously to all modules on the agent that implement either
-	/// <see cref="ISignalReceiver{TSignal}"/>
-	/// or
-	/// <see cref="ISignalInterceptor{TSignal}"/>.
-	/// <br/>
+	/// Sends a signal asynchronously to all modules on the agent that implement one of the following:
+	/// <list type="bullet">
+	/// 	<item><see cref="ISignalReceiver{TSignal}"/></item>
+	/// 	<item><see cref="ISignalInterceptor{TSignal}"/></item>
+	/// 	<item><see cref="IAsyncSignalReceiver{TSignal}"/></item>
+	/// 	<item><see cref="IAsyncSignalInterceptor{TSignal}"/></item>
+	/// </list>
 	/// It's perfectly fine to add and remove modules during signal processing,
 	/// but be aware that modules that are removed will not receive the signal
 	/// and modules that are added will only receive future signals, i.e. sent after they were added.
@@ -884,37 +887,50 @@ public class Agent : IDisposable
 			throw new ObjectDisposedException("Disposed agents cannot send signals.");
 		
 		var order = SignalProcessorPriorityPerType.GetValueOrDefault(typeof(TSignal));
-		var processors = _modules.OfType<ISignalProcessor<TSignal>>();
+		var processors = _modules.OfType<IBaseSignalProcessor<TSignal>>();
 		if(order is not null)
 			processors = processors.OrderBy(p => order.IndexOf((Module)p) switch { -1 => int.MaxValue, var i => i });
 		
-		var list = new List<ISignalProcessor<TSignal>>(processors);
-		var index = 0;
+		var list = new List<IBaseSignalProcessor<TSignal>>(processors);
+		var index = -1;
 		foreach(var processor in list)
 			try
 			{
-				if(processor is Module { Agent: null })
-					continue; // skip modules that have been removed during signal processing
-				
+				++index;
+				Intercept<TSignal> intercept = default;
 				switch(processor)
 				{
+					case Module { Agent: null }:
+						continue; // skip modules that have been removed during signal processing
 					case ISignalReceiver<TSignal> receiver:
+						receiver.ReceiveSignal(signal);
+						continue;
+					case IAsyncSignalReceiver<TSignal> receiver:
 						await receiver.ReceiveSignalAsync(signal);
-						break;
+						continue;
 					case ISignalInterceptor<TSignal> interceptor:
-						if(await interceptor.InterceptSignalAsync(signal) is Intercepted<TSignal> intercepted)
-						{
-							if(intercepted.Result is SignalInterceptionResult.StopPropagation)
-								return;
-							signal = intercepted.Signal;
-						}
+						intercept = interceptor.InterceptSignal(signal);
+						break;
+					case IAsyncSignalInterceptor<TSignal> interceptor:
+						intercept = await interceptor.InterceptSignalAsync(signal);
 						break;
 					default:
 						throw new InvalidOperationException(
 							$"Signal processor {processor} not supported."
 						);
 				}
-				++index;
+				switch(intercept)
+				{
+					case { ShouldStopProcessing: true }:
+						return;
+					case { Signal: var newSignal }:
+						signal = newSignal ?? signal;
+						break;
+					default:
+						throw new InvalidOperationException(
+							$"Signal interceptor {processor} returned an invalid result."
+						);
+				}
 			}
 			catch(Exception ex)
 			{
@@ -929,13 +945,17 @@ public class Agent : IDisposable
 	}
 
 	/// <summary>
-	/// Sends a signal to all modules on the agent that implement either
-	/// <see cref="ISignalReceiver{TSignal}"/>
-	/// or
-	/// <see cref="ISignalInterceptor{TSignal}"/>.
+	/// Sends a signal to all modules on the agent that implement one of the following:
+	/// <list type="bullet">
+	/// 	<item><see cref="ISignalReceiver{TSignal}"/></item>
+	/// 	<item><see cref="ISignalInterceptor{TSignal}"/></item>
+	/// 	<item><see cref="IAsyncSignalReceiver{TSignal}"/></item>
+	/// 	<item><see cref="IAsyncSignalInterceptor{TSignal}"/></item>
+	/// </list>
 	/// This method is non-blocking and returns immediately
 	/// because it defers the signal processing to a background task.
 	/// </summary>
+	/// <seealso cref="SendSignalAsync{TSignal}"/>
 	/// <param name="signal">The signal to send.</param>
 	/// <typeparam name="TSignal">The type of signal to send.</typeparam>
 	public void SendSignal<TSignal>(TSignal signal)
@@ -962,15 +982,15 @@ public class Agent : IDisposable
 	/// </code>
 	/// </summary>
 	/// <param name="getModuleOrder">A function that returns the order in which modules should process the signals.</param>
-	/// <seealso cref="ISignalInterceptor{TSignal}"/>
-	/// <seealso cref="ISignalReceiver{TSignal}"/>
+	/// <seealso cref="IAsyncSignalInterceptor{TSignal}"/>
+	/// <seealso cref="IAsyncSignalReceiver{TSignal}"/>
 	public Agent SetSignalProcessingOrder<TSignal>(Func<Agent, List<Module>> getModuleOrder)
 	{
 		var moduleOrder = getModuleOrder(this);
 		foreach(var module in moduleOrder)
 		{
-			if(module is not ISignalProcessor<TSignal>)
-				throw new ArgumentException($"Module {module} does not implement {typeof(ISignalProcessor<TSignal>).ToVerboseString()}.");
+			if(module is not IBaseSignalProcessor<TSignal>)
+				throw new ArgumentException($"Module {module} does not implement {typeof(IBaseSignalProcessor<TSignal>).ToVerboseString()}.");
 			if(module.Agent != this)
 				throw new ArgumentException($"Module {module} does not belong to the agent.");
 		}

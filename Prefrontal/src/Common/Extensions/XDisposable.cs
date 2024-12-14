@@ -1,5 +1,6 @@
 namespace Prefrontal.Common.Extensions;
 
+/// <summary> Provides extension methods for <see cref="IDisposable"/>. </summary>
 public static class XDisposable
 {
 	/// <summary>
@@ -8,8 +9,8 @@ public static class XDisposable
 	/// </summary>
 	/// <typeparam name="T">Type of the disposable object.</typeparam>
 	/// <typeparam name="TOut">Type of the operation's result.</typeparam>
-	/// <param name="disposable">An object that implements IDisposable</param>
-	/// <param name="asyncDisposable">An object that implements IAsyncDisposable</param>
+	/// <param name="disposable">An object that implements IDisposable.</param>
+	/// <param name="asyncDisposable">An object that implements IAsyncDisposable.</param>
 	/// <param name="operation">The operation to perform while using the disposable object.</param>
 	public static void UseFor<T>(this T disposable, Action<T> operation) where T : IDisposable
 	{

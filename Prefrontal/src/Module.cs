@@ -30,8 +30,8 @@ namespace Prefrontal;
 ///		</item>
 ///		<item>
 ///			Signals are received by modules
-///			that implement either the <see cref="ISignalInterceptor{TSignal}"/>
-///			or <see cref="ISignalReceiver{TSignal}"/> interface of the same signal type.
+///			that implement either the <see cref="IAsyncSignalInterceptor{TSignal}"/>
+///			or <see cref="IAsyncSignalReceiver{TSignal}"/> interface of the same signal type.
 ///			These interfaces have a single method that gets called with the signal as a parameter.
 ///		</item>
 ///		<item>

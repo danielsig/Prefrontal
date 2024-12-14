@@ -1,9 +1,6 @@
-using System.Diagnostics.CodeAnalysis;
-using System.Runtime.InteropServices.Marshalling;
-using System.Text;
-
 namespace Prefrontal.Common.Extensions;
 
+/// <summary> Extension methods for <see cref="string"/>. </summary>
 public static class XString
 {
 	/// <summary>
