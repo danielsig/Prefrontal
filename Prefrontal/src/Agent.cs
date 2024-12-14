@@ -954,6 +954,10 @@ public class Agent : IDisposable
 	/// </list>
 	/// This method is non-blocking and returns immediately
 	/// because it defers the signal processing to a background task.
+	/// <br/>
+	/// It's perfectly fine to add and remove modules during signal processing,
+	/// but be aware that modules that are removed will not receive the signal
+	/// and modules that are added will only receive future signals, i.e. sent after they were added.
 	/// </summary>
 	/// <seealso cref="SendSignalAsync{TSignal}"/>
 	/// <param name="signal">The signal to send.</param>

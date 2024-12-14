@@ -6,8 +6,8 @@ public interface ISignalReceiver<TSignal> : IBaseSignalProcessor<TSignal>
 	/// <summary>
 	/// Receives a signal of type <typeparamref name="TSignal"/>
 	/// that was sent by another module
-	/// via <see cref="Module.SendSignalAsync{TSignal}(TSignal)"/>
-	/// or <see cref="Module.SendSignal{TSignal}(TSignal)"/>.
+	/// via <see cref="Module.SendSignal{TSignal}(TSignal)"/>
+	/// or <see cref="Module.SendSignalAsync{TSignal}(TSignal)"/>.
 	/// <br/>
 	/// Example:
 	/// <code>

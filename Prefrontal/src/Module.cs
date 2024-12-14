@@ -53,8 +53,14 @@ public abstract class Module
 {
 	/// <summary>
 	/// The agent that this module belongs to.
+	/// <em><b>Beware that this can be null if the module has been removed from the agent.</b></em>
+	/// To check if the module is still part of the agent, you can <see cref="implicit operator bool">implicitly cast the module to a boolean</see>.
 	/// </summary>
 	public Agent Agent { get; internal set; } = null!;
+
+	/// <summary>
+	/// The logger that this module can use to log messages.
+	/// </summary>
 	protected internal ILogger Debug
 		=> Agent?.Debug
 		?? throw new InvalidOperationException("The module has been removed from the agent.");
@@ -92,6 +98,9 @@ public abstract class Module
 		return name;
 	}
 
+	/// <summary>
+	/// True if the module still part of the agent, false otherwise.
+	/// </summary>
 	public static implicit operator bool(Module module)
 		=> module?.Agent is not null;
 }
