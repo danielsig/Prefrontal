@@ -3,10 +3,10 @@ namespace Prefrontal.Signaling;
 /// <summary>
 /// <list type="bullet">
 /// 	<item>
-/// 		<see cref="Module"/>s need to implement
+/// 		<see cref="Module">Modules</see> need to implement
 /// 		<see cref="IAsyncSignalInterceptor{TSignal}" />
 /// 		or <see cref="ISignalInterceptor{TSignal}" />
-/// 		to intercept signals of that type.
+/// 		to intercept signals of a given <typeparamref name="TSignal"/> type.
 /// 	</item>
 /// 	<item>
 /// 		Modules send signals by
@@ -14,8 +14,8 @@ namespace Prefrontal.Signaling;
 /// 		or <see cref="Module.SendSignalAsync{TSignal}(TSignal)"/>.
 /// 	</item>
 /// 	<item>
-/// 		Signal processors are executed in the order they were added to the agent,
-/// 		unless you specify a different order by calling
+/// 		Signal processors are executed <em>in the same order as they were added</em> to the agent,
+/// 		<b>unless</b> you specify a different order by calling
 /// 		<see cref="Agent.SetSignalProcessingOrder{TSignal}(Func{Agent, List{Module}})"/>.
 /// 	</item>
 /// 	<item>

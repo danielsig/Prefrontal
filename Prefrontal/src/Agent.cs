@@ -6,6 +6,8 @@ namespace Prefrontal;
 
 /// <summary>
 /// An agent manages a collection of <see cref="Module">Modules</see> that work together to achieve a goal.
+/// <br/>
+/// <h5>Getting Started</h5>
 /// <list type="bullet">
 /// 	<item>
 /// 		To create an agent, simply instantiate it
@@ -24,11 +26,64 @@ namespace Prefrontal;
 /// 		call <see cref="IDisposable.Dispose"/> to dispose of it.
 /// 	</item>
 /// </list>
+/// <h5 id="agent_lifecycle">The Agent Lifecycle</h5>
+/// <list type="table">
+/// 	<listheader>
+/// 		<term><see cref="State">Agent.State</see></term>
+/// 		<description>Available Actions</description>
+/// 	</listheader>
+/// 	<item>
+/// 		<term><see cref="Uninitialized"/></term>
+/// 		<description>
+/// 			<list type="bullet">
+/// 				<item><span style="color: #c5ffbf;">Modules can be added.</span></item>
+/// 				<item><span style="color: #c5ffbf;">Modules can be removed.</span></item>
+/// 				<item><span style="color: #c5ffbf;">Modules can send and receive signals.</span></item>
+/// 				<item><span style="color: #c5ffbf;">Signal processing order can be changed.</span></item>
+/// 			</list>
+///			</description>
+/// 	</item>
+/// 	<item>
+/// 		<term><see cref="Initializing"/></term>
+/// 		<description>
+/// 			<list type="bullet">
+/// 				<item><span style="color: #c5ffbf;">Modules can be added (new modules are initialized immediately).</span></item>
+/// 				<item><span style="color: #e84035;">Modules <b>cannot</b> be removed.</span></item>
+/// 				<item><span style="color: #c5ffbf;">Modules can send and receive signals.</span></item>
+/// 				<item><span style="color: #c5ffbf;">Signal processing order can be changed.</span></item>
+/// 			</list>
+///			</description>
+/// 	</item>
+/// 	<item>
+/// 		<term><see cref="Initialized"/></term>
+/// 		<description>
+/// 			<list type="bullet">
+/// 				<item><span style="color: #c5ffbf;">Modules can be added (new modules are initialized immediately).</span></item>
+/// 				<item><span style="color: #c5ffbf;">Modules can be removed.</span></item>
+/// 				<item><span style="color: #c5ffbf;">Modules can send and receive signals.</span></item>
+/// 				<item><span style="color: #c5ffbf;">Signal processing order can be changed.</span></item>
+/// 			</list>
+///			</description>
+/// 	</item>
+/// 	<item>
+/// 		<term><see cref="Disposing"/> and <see cref="Disposed"/></term>
+/// 		<description>
+///				<list type="bullet">
+/// 				<item><span style="color: #e84035;">Modules <b>cannot</b> be added.</span></item>
+/// 				<item><span style="color: #e84035;">Modules <b>cannot</b> be removed.</span></item>
+/// 				<item><span style="color: #e84035;">Modules <b>cannot</b> send nor receive signals.</span></item>
+/// 				<item><span style="color: #e84035;">Signal processing order <b>cannot</b> be changed.</span></item>
+/// 			</list>
+///			</description>
+/// 	</item>
+/// </list>
 /// <para>
+/// 	<h5><see cref="ServiceProvider"/> Disposal</h5>
 /// 	If you need to dispose of the <see cref="ServiceProvider"/> when the agent is disposed
 /// 	(e.g. if the ServiceProvider was specifically created for that agent),
 /// 	simply add <see cref="ServiceProviderDisposesWithAgentModule"/> to the agent.
 /// </para>
+/// <br/>
 /// </summary>
 public class Agent : IDisposable
 {

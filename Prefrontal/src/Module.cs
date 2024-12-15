@@ -3,6 +3,10 @@ namespace Prefrontal;
 /// <summary>
 /// A base class for all modules that can be added to an <see cref="Prefrontal.Agent"/>.
 /// <para>
+/// 	Refer to <a href="Prefrontal.Agent.yml#agent_lifecycle">Agent's Lifecycle</a>
+/// 	for information on what can and cannot be done in each of the agent's lifecycle stages.
+/// </para>
+/// <para>
 /// 	Each module's constructor can have injectable dependencies in its parameters
 /// 	which are injected by the agent using its <see cref="Agent.ServiceProvider"/>.
 /// 	The module's constructor can also take the agent itself
@@ -11,21 +15,21 @@ namespace Prefrontal;
 /// <list type="bullet">
 /// 	<item>
 ///			Modules can be added to an agent
-///			using the <see cref="Agent.AddModule{T}">AddModule&lt;T&gt;()</see> method.
+///			by calling <see cref="Agent.AddModule{T}">AddModule&lt;T&gt;()</see>.
 ///		</item>
 /// 	<item>
 ///			Modules can be removed from an agent
-///			using the <see cref="Agent.RemoveModule{T}">RemoveModule&lt;T&gt;()</see> method.
+///			by calling <see cref="Agent.RemoveModule{T}">RemoveModule&lt;T&gt;()</see>.
 ///		</item>
 ///		<item>
 ///			Call <see cref="Initialize">Initialize()</see>
-///			or <see cref="InitializeAsync">InitializeAsync()</see> on the agent
-///			after adding all modules to it in order to initialize all of its modules.
+///			or <see cref="InitializeAsync">InitializeAsync()</see>
+///			to initialize the agent and all of its modules.
 ///		</item>
 ///		<item>
 ///			Modules can send signals to other modules on the same agent
-///			using the <see cref="SendSignal{TSignal}(TSignal)"/> method
-///			or the <see cref="SendSignalAsync{TSignal}(TSignal)"/> method.
+///			by calling <see cref="SendSignal{TSignal}(TSignal)"/>
+///			or <see cref="SendSignalAsync{TSignal}(TSignal)"/>.
 ///			These signals can be of any type,
 ///			but it is recommended to create your own signal types.
 ///		</item>
@@ -47,6 +51,9 @@ namespace Prefrontal;
 /// 		by throwing an <see cref="InvalidOperationException"/>
 /// 		in their <see cref="IDisposable.Dispose"/> method.
 /// 		However, doing so when the agent itself is being disposed of has no effect.
+/// 	</item>
+/// 	<item>
+/// 		Modules can log messages using the <see cref="Debug"/> property.
 /// 	</item>
 /// </list>
 /// </summary>
@@ -85,8 +92,8 @@ public abstract class Module
 	/// 	</item>
 	/// 	<item>
 	///			There is no need to override both <see cref="Module.Initialize"/>
-	///			and <see cref="Module.InitializeAsync"/>,
-	///			in which case the async method takes precedence.
+	///			and <see cref="Module.InitializeAsync"/> because
+	///			in that case only the async method gets called.
 	/// 	</item>
 	/// </list>
 	/// </summary>
@@ -120,6 +127,13 @@ public abstract class Module
 		Task.Run(() => Agent.SendSignalAsync(signal));
 	}
 
+	/// <summary>
+	/// 	Unless overridden,
+	/// 	returns the name of the module's type
+	/// 	(without the "Module" suffix).
+	/// 	<br/>
+	/// 	Generic type arguments are also included in the output, if any.
+	/// </summary>
 	public override string ToString() => TypeName;
 
 	private string? _typeName;
@@ -146,7 +160,7 @@ public abstract class Module
 	}
 
 	/// <summary>
-	/// True if the module still part of the agent, false otherwise.
+	/// True if the module is still part of the agent, false otherwise.
 	/// </summary>
 	public static implicit operator bool(Module module)
 		=> module?.Agent is not null;
