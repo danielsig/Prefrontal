@@ -13,11 +13,9 @@ internal record SignalObservable<TSignal>(Agent Agent) : IObservable<TSignal>
 	public IDisposable Subscribe(IObserver<TSignal> observer)
 	{
 		var module = Agent.GetOrAddModule<SignalObserverModule<TSignal>>();
-		module.Observers.Add(observer);
+		module.AddObserver(observer);
 		return new DisposeCallback(() =>
-		{
-			observer.OnCompleted();
-			module.Observers.Remove(observer);
-		});
+			module.RemoveObserver(observer)
+		);
 	}
 }

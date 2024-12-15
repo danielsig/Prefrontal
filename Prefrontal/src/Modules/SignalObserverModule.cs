@@ -1,11 +1,25 @@
 namespace Prefrontal.Modules;
 
-internal class SignalObserverModule<TSignal>(List<IObserver<TSignal>> observers) : Module, IAsyncSignalReceiver<TSignal>, IDisposable
+internal class SignalObserverModule<TSignal>() : Module, IAsyncSignalReceiver<TSignal>, IDisposable
 {
-	internal List<IObserver<TSignal>> Observers = observers;
+	private readonly Lock _gate = new();
+	private IObserver<TSignal>[] _observers = [];
+	internal void AddObserver(IObserver<TSignal> observer)
+	{
+		lock(_gate)
+			_observers = [.. _observers, observer];
+	}
+	internal void RemoveObserver(IObserver<TSignal> observer)
+	{
+		lock(_gate)
+			_observers = _observers.Except(observer).ToArray();
+	}
 	public Task ReceiveSignalAsync(TSignal signal)
 	{
-		foreach(var observer in new List<IObserver<TSignal>>(Observers))
+		IObserver<TSignal>[] observers;
+		lock(_gate)
+			observers = _observers;
+		foreach(var observer in observers)
 			try
 			{
 				observer.OnNext(signal);
@@ -18,8 +32,8 @@ internal class SignalObserverModule<TSignal>(List<IObserver<TSignal>> observers)
 	}
 	public void Dispose()
 	{
-		var observers = Observers;
-		Observers = [];
+		var observers = _observers;
+		_observers = [];
 		foreach(var observer in observers)
 			try
 			{
@@ -29,6 +43,5 @@ internal class SignalObserverModule<TSignal>(List<IObserver<TSignal>> observers)
 			{
 				Debug.LogError(ex, "An error occurred while notifying an observer that the signal stream has completed.");
 			}
-		observers.Clear();
 	}
 }

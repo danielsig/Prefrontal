@@ -1,15 +1,28 @@
 ﻿using System.Collections.Concurrent;
+using Prefrontal.Reactive;
 using static Prefrontal.AgentState;
 
 namespace Prefrontal;
 
 /// <summary>
-/// An agent manages a collection of <see cref="Module"/>s that work together to achieve a goal.
+/// An agent manages a collection of <see cref="Module">Modules</see> that work together to achieve a goal.
 /// <list type="bullet">
-/// 	<item>To create an agent simply instantiate it with the <see langword="new"/> operator.</item>
-/// 	<item>Add modules to the agent by chaining <see cref="AddModule{T}(Action{T}?)"/> method calls.</item>
-/// 	<item>Finally call <see cref="Initialize"/> to initialize all modules and start the agent.</item>
-/// 	<item>When the agent is no longer needed, call <see cref="IDisposable.Dispose"/> to dispose of it.</item>
+/// 	<item>
+/// 		To create an agent, simply instantiate it
+/// 		with the <see langword="new"/> operator.
+/// 	</item>
+/// 	<item>
+/// 		Add modules to the agent by chaining
+/// 		<see cref="AddModule{T}(Action{T}?)">AddModule()</see> method calls.
+/// 	</item>
+/// 	<item>
+/// 		Finally call <see cref="Initialize">Initialize()</see> or <see cref="InitializeAsync">InitializeAsync()</see>
+/// 		to initialize all modules and start the agent.
+/// 	</item>
+/// 	<item>
+/// 		When the agent is no longer needed,
+/// 		call <see cref="IDisposable.Dispose"/> to dispose of it.
+/// 	</item>
 /// </list>
 /// <para>
 /// 	If you need to dispose of the <see cref="ServiceProvider"/> when the agent is disposed
@@ -26,6 +39,7 @@ public class Agent : IDisposable
 	{
 		ServiceProvider = EmptyServiceProvider.Instance;
 		Debug = DefaultLogger;
+		_state = new(Debug);
 	}
 
 	/// <summary>
@@ -41,6 +55,7 @@ public class Agent : IDisposable
 			?? serviceProvider.GetService<ILogger>()
 			?? serviceProvider.GetService<ILoggerProvider>()?.CreateLogger("Agent")
 			?? DefaultLogger;
+		_state = new(Debug);
 	}
 
 	#region Fields & Properties
@@ -80,15 +95,62 @@ public class Agent : IDisposable
 	/// <summary>
 	/// The current state of the agent.
 	/// Agents start in the <see cref="Uninitialized"/> state.
-	/// Calling <see cref="Initialize"/> will set the state to <see cref="Initializing"/>
-	/// while the modules are being initialized and to <see cref="Initialized"/> when they are done.
-	/// Calling <see cref="Dispose"/> will set the state to <see cref="Disposing"/>
-	/// while the modules are being disposed of and to <see cref="Disposed"/> when done.
+	/// Calling <see cref="Initialize">Initialize()</see>/<see cref="InitializeAsync">InitializeAsync()</see>
+	/// sets the state to <see cref="Initializing"/>
+	/// while modules are being initialized and to <see cref="Initialized"/> when they are done.
+	/// Calling <see cref="Dispose"/> sets the state to <see cref="Disposing"/>
+	/// while modules are being disposed of and to <see cref="Disposed"/> when done.
 	/// </summary>
-	public AgentState State { get; private set; } = Uninitialized;
+	public AgentState State
+	{
+		get => _state.State;
+		private set => _state.State = value;
+	}
+	private readonly AgentStateObservable _state;
+
+	/// <summary>
+	/// An observable stream of the agent's state.
+	/// Subscribing will immediately return the current state.
+	/// </summary>
+	/// <seealso cref="State"/>
+	/// <seealso cref="Initialization"/>
+	public IObservable<AgentState> StateObservable => _state;
+
+	/// <summary>
+	/// Provides a task that completes when the agent is no longer <see cref="Uninitialized"/> or <see cref="Initializing"/>.
+	/// <br/>
+	/// This is handy when a piece of code that didn't call <see cref="InitializeAsync"/>
+	/// needs to wait for initialization to complete.
+	/// </summary>
+	/// <seealso cref="State"/>
+	/// <seealso cref="StateObservable"/>
+	public Task Initialization => State is Uninitialized or Initializing
+		? Thru(new TaskCompletionSource(), t =>
+		{
+			IDisposable? disposable = null;
+			var done = false;
+			disposable = _state.Subscribe(new AnonymousObserver<AgentState>(
+				state =>
+				{
+					if(state is Uninitialized or Initializing)
+						return;
+					done = true;
+					disposable?.Dispose();
+					t.TrySetResult();
+				},
+				ex => t.TrySetException(ex),
+				() =>
+				{
+					if(!done)
+						t.TrySetResult();
+				}
+			));
+			return t.Task;
+		})
+		: Task.CompletedTask;
 
 	#endregion
-	
+
 	#region AddModule
 
 	/// <summary>
@@ -96,21 +158,19 @@ public class Agent : IDisposable
 	/// The module type's constructor gets called and the required services are injected from the <see cref="ServiceProvider"/>.
 	/// The module's constructor can also take the agent itself as a parameter and even other modules that it requires.
 	/// The optional <paramref name="configure"/> action can be used to configure the module before it is initialized.
-	/// Don't forget to call <see cref="Initialize"/>
-	/// on the agent after you've added all the modules.
+	/// Don't forget to <see cref="InitializeAsync">initialize</see> the agent after you've added all the modules.
 	/// <para>
-	/// 	When a module is added <em>after</em> the agent is initialized
-	/// 	its <see cref="Module.Initialize"/> method is called immediately.
+	/// 	When a module is added <em>after</em> the agent is initialized it gets initialized immediately.
 	/// </para>
 	/// </summary>
 	/// <typeparam name="T">
 	/// 	The module type.
-	/// 	This must inherit from <see cref="Prefrontal.Module"/>.
+	/// 	This must inherit from <see cref="Module"/>.
 	/// </typeparam>
 	/// <param name="configure">
 	/// 	(optional) callback to configure the module before it is initialized.
 	/// </param>
-	/// <returns>The current agent for further method chaining.</returns>
+	/// <returns>The agent for further method chaining.</returns>
 	/// <exception cref="InvalidOperationException">
 	/// 	Thrown when the type is not a valid module type
 	/// 	or when the module could not be created.
@@ -129,21 +189,19 @@ public class Agent : IDisposable
 
 	/// <summary>
 	/// Adds a module using a factory function to create the module.
-	/// Don't forget to call <see cref="Initialize"/>
-	/// on the agent after you've added all the modules.
+	/// Don't forget to <see cref="InitializeAsync">initialize</see> the agent after you've added all the modules.
 	/// <para>
-	/// 	When a module is added <em>after</em> the agent is initialized
-	/// 	its <see cref="Module.Initialize"/> method is called immediately.
+	/// 	When a module is added <em>after</em> the agent is initialized it gets initialized immediately.
 	/// </para>
 	/// </summary>
 	/// <typeparam name="T">
 	/// 	The module type.
-	/// 	This must inherit from <see cref="Prefrontal.Module"/>.
+	/// 	This must inherit from <see cref="Module"/>.
 	/// </typeparam>
 	/// <param name="createModule">
 	/// 	A function that creates the module.
 	/// </param>
-	/// <returns>The current agent for further method chaining.</returns>
+	/// <returns>The agent for further method chaining.</returns>
 	/// <exception cref="InvalidOperationException">
 	/// 	Thrown when the type is not a valid module type
 	/// 	or when the module could not be created.
@@ -160,13 +218,13 @@ public class Agent : IDisposable
 	}
 	
 	/// <inheritdoc cref="AddModule{T}(Action{T}?)"/>
-	/// <param name="type">
+	/// <param name="moduleType">
 	/// 	The module type.
-	/// 	This must inherit from <see cref="Prefrontal.Module"/>.
+	/// 	A module must be a concrete class that inherits from <see cref="Module"/>.
 	/// </param>
-	public Agent AddModule(Type type, Action<Module>? configure = null)
+	public Agent AddModule(Type moduleType, Action<Module>? configure = null)
 	{
-		AddModuleInternal(type, configure);
+		AddModuleInternal(moduleType, configure);
 		return this;
 	}
 	private Module AddModuleInternal(
@@ -215,7 +273,7 @@ public class Agent : IDisposable
 			// invoke callbacks
 			configure?.Invoke(module);
 			if(State is Initialized or Initializing)
-				module.Initialize();
+				module.InitializeAsync().Wait();
 			
 			return module;
 		}
@@ -378,7 +436,7 @@ public class Agent : IDisposable
 	/// </summary>
 	/// <typeparam name="T">
 	/// 	The module type.
-	/// 	This must inherit from <see cref="Prefrontal.Module"/>.
+	/// 	This must inherit from <see cref="Module"/>.
 	/// </typeparam>
 	/// <returns>
 	/// 	True if at least one module of the given type was found and removed,
@@ -392,24 +450,24 @@ public class Agent : IDisposable
 	/// Removes <em>all</em> modules of the specified type from the agent
 	/// and calls <see cref="IDisposable.Dispose"/> on those that implements <see cref="IDisposable"/>.
 	/// </summary>
-	/// <param name="type">
+	/// <param name="moduleType">
 	/// 	The module type.
-	/// 	This must inherit from <see cref="Prefrontal.Module"/>
+	/// 	This must inherit from <see cref="Module"/>
 	/// </param>
 	/// <returns>
 	/// 	True if at least one module of the given type was found and removed,
 	/// 	False otherwise.
 	/// </returns>
-	public bool RemoveModule(Type type)
+	public bool RemoveModule(Type moduleType)
 	{
 		if(State is Initializing)
 			throw new InvalidOperationException(
 				"Cannot remove modules from an agent while it's initializing."
 			);
 		
-		if(type is null
+		if(moduleType is null
 		|| State is Disposed or Disposing
-		|| _modules.Where(c => c.GetType() == type).ToList() is not List<Module> removed
+		|| _modules.Where(c => c.GetType() == moduleType).ToList() is not List<Module> removed
 		|| removed.Count == 0)
 			return false;
 
@@ -517,22 +575,31 @@ public class Agent : IDisposable
 	/// Gets the first module of the specified <typeparamref name="T"/> type
 	/// or <see langword="null"/> if the agent does not contain a module of that type.
 	/// </summary>
+	/// <returns>
+	/// 	The module of the specified type
+	/// 	or <see langword="null"/> if not found.
+	/// </returns>
 	public T? GetModuleOrDefault<T>()
 		where T : Module
 		=> _modules.FirstOrDefault(m => m is T) as T;
 	
 	/// <summary>
-	/// Gets the first module of the specified <paramref name="type"/> type
+	/// Gets the first module of the specified <paramref name="moduleType"/>
 	/// or <see langword="null"/> if the agent does not contain a module of that type.
 	/// </summary>
-	public Module? GetModuleOrDefault(Type type)
-		=> _modules.FirstOrDefault(m => m.GetType() == type);
+	/// <returns>
+	/// 	The module of the specified type
+	/// 	or <see langword="null"/> if not found.
+	/// </returns>
+	public Module? GetModuleOrDefault(Type moduleType)
+		=> _modules.FirstOrDefault(m => m.GetType() == moduleType);
 
 	/// <summary>
 	/// Gets the first module of the specified <typeparamref name="T"/> type
 	/// or throws an <see cref="InvalidOperationException"/>
 	/// if the agent does not contain a module of that type.
 	/// </summary>
+	/// <returns>The module of the specified type.</returns>
 	public T GetModule<T>()
 		where T : Module
 		=> GetModuleOrDefault<T>()
@@ -541,19 +608,24 @@ public class Agent : IDisposable
 		);
 	
 	/// <summary>
-	/// Gets the first module of the specified <paramref name="type"/> type
+	/// Gets the first module of the specified <paramref name="moduleType"/>
 	/// or throws an <see cref="InvalidOperationException"/>
 	/// if the agent does not contain a module of that type.
 	/// </summary>
-	public Module GetModule(Type type)
-		=> GetModuleOrDefault(type)
+	/// <returns>The module of the specified type.</returns>
+	public Module GetModule(Type moduleType)
+		=> GetModuleOrDefault(moduleType)
 		?? throw new InvalidOperationException(
-			$"Module of type {type.ToVerboseString()} not found."
+			$"Module of type {moduleType.ToVerboseString()} not found."
 		);
 	
 	/// <summary>
 	/// Gets all modules of the specified <typeparamref name="T"/> type.
 	/// </summary>
+	/// <returns>
+	/// 	All modules of the specified type,
+	/// 	or an empty enumerable if none were found.
+	/// </returns>
 	public IEnumerable<T> GetModules<T>()
 		where T : Module
 		=> _modules.OfType<T>();
@@ -594,39 +666,76 @@ public class Agent : IDisposable
 		);
 	
 	/// <inheritdoc cref="GetOrAddModule{T}(Action{T}?)"/>
-	public Module GetOrAddModule(Type type, Action<Module>? configure = null)
-		=> GetModuleOrDefault(type)
-		?? AddModuleInternal(type, configure);
+	public Module GetOrAddModule(Type moduleType, Action<Module>? configure = null)
+		=> GetModuleOrDefault(moduleType)
+		?? AddModuleInternal(moduleType, configure);
 
 	/// <inheritdoc cref="GetOrAddModule{T}(Action{T}?)"/>
-	public Module GetOrAddModule(Type type, Func<Agent, Module> createModule)
-		=> GetModuleOrDefault(type)
-		?? AddModuleInternal(type, null, createModule);
+	public Module GetOrAddModule(Type moduleType, Func<Agent, Module> createModule)
+		=> GetModuleOrDefault(moduleType)
+		?? AddModuleInternal(moduleType, null, createModule);
 
 	#endregion
 
-	#region Overridable Methods
+	#region Initialize
 	/// <summary>
 	/// Initializes all modules on the agent in the order they were added.
-	/// You cannot dispose of the agent while it is initializing.
+	/// <para>
+	/// 	This method calls
+	/// 	<see cref="Module.Initialize"/> / <see cref="Module.InitializeAsync"/>
+	/// 	on each module.
+	/// 	If both methods are overridden in a module, the async method takes precedence.
+	/// </para>
+	/// <para>
+	/// 	You cannot dispose of the agent while it is initializing.
+	/// </para>
 	/// </summary>
 	/// <exception cref="InvalidOperationException">
 	/// 	Thrown when the agent has already been disposed of
-	/// 	or if any of the modules call attempt to dispose of the agent.
+	/// 	or if any of the modules attempt to dispose of the agent.
 	/// </exception>
 	/// <exception cref="AggregateException">
 	/// 	Thrown when one or more modules fail to initialize.
 	/// </exception>
-	/// <returns>The current agent.</returns>
-	public virtual Agent Initialize()
+	/// <param name="synchronous">
+	/// 	Run the initialization synchronously,
+	/// 	blocking the current thread
+	/// 	until initialization is complete.
+	/// </param>
+	/// <returns>
+	/// 	The fully <see cref="Initialized"/> agent
+	/// 	if <paramref name="synchronous"/> = <see langword="true"/>
+	/// 	or if all modules initialized synchronously.
+	///
+	/// 	Otherwise, the agent is returned immediately
+	/// 	while still <see cref="Initializing"/> in the background.
+	/// </returns>
+	public Agent Initialize(bool synchronous = false)
+	{
+		var init = InitializeAsync();
+		if(synchronous)
+			init.Wait();
+		else
+			Task.Run(() => init);
+		return this;
+	}
+	/// <returns>
+	/// 	A task that completes when all modules have been initialized
+	/// 	and the agent is in the <see cref="Initialized"/> state.
+	/// </returns>
+	/// <remarks>
+	/// 	If you choose to override this method in a derived class,
+	/// 	make sure to call and await the base method.
+	/// </remarks>
+	/// <inheritdoc cref="Initialize"/>
+	public virtual async Task<Agent> InitializeAsync()
 	{
 		if(State is Disposed or Disposing)
-			throw new ObjectDisposedException("Cannot initialize a disposed agent.");
-		
+			throw new ObjectDisposedException($"Cannot initialize an already {State} agent.");
 		if(State is Initialized or Initializing)
 			return this;
-		
-		using var _ = Debug.BeginScope("Initializing Agent {Name}", Name);
+
+		var log = Debug.BeginScope("Initializing {Agent}", this);
 		State = Initializing;
 		try
 		{
@@ -634,7 +743,7 @@ public class Agent : IDisposable
 			foreach(var module in _modules.ToList())
 				try
 				{
-					module.Initialize();
+					await module.InitializeAsync();
 				}
 				catch(Exception error)
 				{
@@ -642,30 +751,34 @@ public class Agent : IDisposable
 				}
 			if(errors?.Count > 0)
 				throw new AggregateException(
-					$@"Failed to initialize {
-						errors.Count
-					} modules on agent: {
-						Name
-					}: {
-						errors
+					$@"Failed to initialize {errors.Count} modules on agent: {Name}: {errors
 							.Select(x => x.module)
-							.JoinVerbose()
-					}",
+							.JoinVerbose()}",
 					errors.Select(x => x.error)
 				);
-			return this;
 		}
 		finally
 		{
 			State = Initialized;
+			log?.Dispose();
 		}
+		return this;
 	}
+
+	#endregion
+
+	#region Dispose
 
 	/// <summary>
 	/// Disposes of the agent and all of its modules.<br/>
 	/// All modules that implement <see cref="IDisposable"/>
 	/// will have their <see cref="IDisposable.Dispose"/> method called.
 	/// </summary>
+	/// <remarks>
+	/// 	If you choose to override this method in a derived class,
+	/// 	make sure to call the base method,
+	/// 	preferably at the start of the method.
+	/// </remarks>
 	public virtual void Dispose()
 	{
 		if(State is Disposed or Disposing)
@@ -676,7 +789,7 @@ public class Agent : IDisposable
 				"Cannot dispose of an agent while it is initializing."
 			);
 
-		using var _ = Debug.BeginScope("Disposing of Agent {Name}", Name);
+		var log = Debug.BeginScope("Disposing of {Agent}", this);
 		State = Disposing;
 		try
 		{
@@ -717,9 +830,15 @@ public class Agent : IDisposable
 		finally
 		{
 			State = Disposed;
+			_state.Dispose();
+			log?.Dispose();
 			GC.SuppressFinalize(this);
 		}
 	}
+
+	#endregion
+
+	#region ToString
 
 	/// <summary>
 	/// Returns a single-line string representation of the agent and its modules.<br/>
@@ -735,6 +854,7 @@ public class Agent : IDisposable
 	/// 		}
 	/// 		.AddModule&lt;FooModule&gt;()
 	/// 		.AddModule&lt;BarModule&gt;()
+	/// 		.Initialize()
 	/// 		.ToString()
 	/// 	);
 	/// 	// Output:
@@ -746,7 +866,17 @@ public class Agent : IDisposable
 	/// 	"Agent <see cref="Name"/> { <see cref="Modules"/>  }"
 	/// </returns>
 	public override string ToString() =>
-		$@"Agent {
+		$@"{
+			State switch
+			{
+				Initialized => "",
+				Uninitialized => "Uninitialized ",
+				Initializing => "Initializing ",
+				Disposed => "Disposed ",
+				Disposing => "Disposing ",
+				_ => State + " "
+			}
+		}Agent {
 			Name?.NullIfWhiteSpace()
 				?.WithMaxLengthSuffixed(20)
 				?.Thru(x => x + ' ')
@@ -777,6 +907,7 @@ public class Agent : IDisposable
 	/// 		}
 	/// 		.AddModule&lt;FooModule&gt;()
 	/// 		.AddModule&lt;BarModule&gt;()
+	/// 		.Initialize()
 	/// 		.ToStringPretty()
 	/// 	);
 	/// 	// Output:
@@ -795,6 +926,7 @@ public class Agent : IDisposable
 	/// 		}
 	/// 		.AddModule&lt;FooModule&gt;()
 	/// 		.AddModule&lt;BarModule&gt;()
+	/// 		.Initialize()
 	/// 		.ToStringPretty()
 	/// 	);
 	/// 	// Output:
@@ -815,15 +947,24 @@ public class Agent : IDisposable
 	/// 	the <see cref="Name" />, <see cref="Description"/>
 	/// 	and <see cref="Modules"/>.
 	/// </returns>
-	public string ToStringPretty(int maxWidth = 50)
+	public virtual string ToStringPretty(int maxWidth = 50)
 	{
 		maxWidth = maxWidth.OrAtLeast(10);
-		var name =
-			(
+		var name = $@"{
+				State switch
+				{
+					Initialized => "",
+					Uninitialized => "Uninitialized ",
+					Initializing => "Initializing ",
+					Disposed => "Disposed ",
+					Disposing => "Disposing ",
+					_ => State + " "
+				}
+			}{(
 				string.IsNullOrWhiteSpace(Name)
 					? "Anonymous Agent"
 					: "Agent " + Name
-			)
+			)}"
 			.WithMaxLengthSuffixed(maxWidth);
 		
 		var description = string.IsNullOrWhiteSpace(Description)
@@ -858,7 +999,6 @@ public class Agent : IDisposable
 		}";
 	}
 	
-	
 	#endregion
 
 	#region Signals
@@ -873,9 +1013,11 @@ public class Agent : IDisposable
 	/// 	<item><see cref="IAsyncSignalReceiver{TSignal}"/></item>
 	/// 	<item><see cref="IAsyncSignalInterceptor{TSignal}"/></item>
 	/// </list>
+	/// <para>
 	/// It's perfectly fine to add and remove modules during signal processing,
 	/// but be aware that modules that are removed will not receive the signal
 	/// and modules that are added will only receive future signals, i.e. sent after they were added.
+	/// </para>
 	/// </summary>
 	/// <seealso cref="SendSignal{TSignal}"/>
 	/// <param name="signal">The signal to send.</param>
@@ -954,10 +1096,11 @@ public class Agent : IDisposable
 	/// </list>
 	/// This method is non-blocking and returns immediately
 	/// because it defers the signal processing to a background task.
-	/// <br/>
+	/// <para>
 	/// It's perfectly fine to add and remove modules during signal processing,
 	/// but be aware that modules that are removed will not receive the signal
 	/// and modules that are added will only receive future signals, i.e. sent after they were added.
+	/// </para>
 	/// </summary>
 	/// <seealso cref="SendSignalAsync{TSignal}"/>
 	/// <param name="signal">The signal to send.</param>

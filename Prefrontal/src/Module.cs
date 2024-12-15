@@ -11,18 +11,19 @@ namespace Prefrontal;
 /// <list type="bullet">
 /// 	<item>
 ///			Modules can be added to an agent
-///			using the <see cref="Agent.AddModule{T}"/> method.
+///			using the <see cref="Agent.AddModule{T}">AddModule()</see> method.
 ///		</item>
 /// 	<item>
 ///			Modules can be removed from an agent
-///			using the <see cref="Agent.RemoveModule{T}"/> method.
+///			using the <see cref="Agent.RemoveModule{T}">RemoveModule()</see> method.
 ///		</item>
 ///		<item>
-///			Call <see cref="Agent.Initialize"/> on the agent
+///			Call <see cref="Initialize">Initialize()</see>
+///			or <see cref="InitializeAsync">InitializeAsync()</see> on the agent
 ///			after adding all modules to it in order to initialize all of its modules.
 ///		</item>
 ///		<item>
-///			Modules can send signals to other modules
+///			Modules can send signals to other modules on the same agent
 ///			using the <see cref="SendSignal{TSignal}(TSignal)"/> method
 ///			or the <see cref="SendSignalAsync{TSignal}(TSignal)"/> method.
 ///			These signals can be of any type,
@@ -66,14 +67,44 @@ public abstract class Module
 		?? throw new InvalidOperationException("The module has been removed from the agent.");
 
 	/// <summary>
-	/// Initializes the module.
-	/// This is where you should set up any connections to other modules.
-	/// <br/>
-	/// <em>Do not call this method directly. It gets called when you call <see cref="Agent.Initialize"/> on the agent.</em>
+	/// Module specific initialization logic goes in here.
+	/// <list type="bullet">
+	/// 	<item>
+	/// 		<em><b>Do not call this method directly.</b></em>
+	/// 	</item>
+	/// 	<item>
+	/// 		Calling <see cref="Agent.Initialize">Initialize</see>
+	/// 		or <see cref="Agent.InitializeAsync">InitializeAsync</see>
+	/// 		on the agent will initialize all of its modules
+	/// 		in the same order as they were added to the agent.
+	/// 	</item>
+	/// 	<item>
+	/// 		Module initialization is run sequentially, not in parallel.
+	/// 		In other words, each module's initialization will not start
+	/// 		until the previous module's initialization has completed.
+	/// 	</item>
+	/// 	<item>
+	///			There is no need to override both <see cref="Module.Initialize"/>
+	///			and <see cref="Module.InitializeAsync"/>,
+	///			in which case the async method takes precedence.
+	/// 	</item>
+	/// </list>
 	/// </summary>
 	protected internal virtual void Initialize()
 	{
 		
+	}
+
+	/// <inheritdoc cref="Initialize()"/>
+	/// <remarks>
+	/// 	This method takes precedence over <see cref="Initialize"/>
+	/// 	if both are overridden in the same module.
+	/// </remarks>
+	/// <returns>A task that represents the asynchronous initialization of this module.</returns>
+	protected internal virtual Task InitializeAsync()
+	{
+		Initialize();
+		return Task.CompletedTask;
 	}
 	
 	/// <inheritdoc cref="Agent.SendSignalAsync{TSignal}(TSignal)"/>

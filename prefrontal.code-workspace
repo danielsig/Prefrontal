@@ -62,6 +62,12 @@
 				"color": "#98C379",
 			}
 		],
+		"workbench.colorCustomizations": {
+			"titleBar.activeBackground": "#5034acbc",
+			"titleBar.inactiveBackground": "#3f346ebc",
+			"titleBar.activeForeground": "#ffffff",
+			"titleBar.inactiveForeground": "#ffffffb3",
+		},
 		"editor.insertSpaces": false,
 		"editor.detectIndentation": false,
 		"editor.tabSize": 4,

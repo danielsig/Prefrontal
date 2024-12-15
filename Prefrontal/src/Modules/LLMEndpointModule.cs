@@ -16,7 +16,7 @@ internal class LLMEndpointModule : Module
 			.GetSection("LLM")
 			.Bind(this);
 	}
-	protected internal override void Initialize()
+	protected internal override async Task InitializeAsync()
 	{
 		
 	}
