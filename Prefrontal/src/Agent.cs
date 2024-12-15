@@ -13,7 +13,7 @@ namespace Prefrontal;
 /// 	</item>
 /// 	<item>
 /// 		Add modules to the agent by chaining
-/// 		<see cref="AddModule{T}(Action{T}?)">AddModule()</see> method calls.
+/// 		<see cref="AddModule{T}(Action{T}?)">AddModule&lt;T&gt;()</see> method calls.
 /// 	</item>
 /// 	<item>
 /// 		Finally call <see cref="Initialize">Initialize()</see> or <see cref="InitializeAsync">InitializeAsync()</see>

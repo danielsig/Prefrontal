@@ -40,7 +40,7 @@ You simply instantiate an [Agent](https://danielsig.github.io/Prefrontal/api/Pre
 add various [Modules](https://danielsig.github.io/Prefrontal/api/Prefrontal.Modules.html)
 to it via [AddModule&lt;T&gt;()](https://danielsig.github.io/Prefrontal/api/Prefrontal.Agent.html#Prefrontal_Agent_AddModule__1_System_Action___0__)
 and then run it by calling
-[Initialize()](https://danielsig.github.io/Prefrontal/api/Prefrontal.Agent.html#Prefrontal_Agent_Initialize).
+[Initialize()](https://danielsig.github.io/Prefrontal/api/Prefrontal.Agent.html#Prefrontal_Agent_Initialize_System_Boolean_).
 
 ```csharp
 var agent = new Agent

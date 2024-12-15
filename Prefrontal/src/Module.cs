@@ -11,11 +11,11 @@ namespace Prefrontal;
 /// <list type="bullet">
 /// 	<item>
 ///			Modules can be added to an agent
-///			using the <see cref="Agent.AddModule{T}">AddModule()</see> method.
+///			using the <see cref="Agent.AddModule{T}">AddModule&lt;T&gt;()</see> method.
 ///		</item>
 /// 	<item>
 ///			Modules can be removed from an agent
-///			using the <see cref="Agent.RemoveModule{T}">RemoveModule()</see> method.
+///			using the <see cref="Agent.RemoveModule{T}">RemoveModule&lt;T&gt;()</see> method.
 ///		</item>
 ///		<item>
 ///			Call <see cref="Initialize">Initialize()</see>
