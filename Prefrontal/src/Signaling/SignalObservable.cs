@@ -12,6 +12,12 @@ internal record SignalObservable<TSignal>(Agent Agent) : IObservable<TSignal>
 {
 	public IDisposable Subscribe(IObserver<TSignal> observer)
 	{
+		ArgumentNullException.ThrowIfNull(observer);
+		if(Agent.State is AgentState.Disposed or AgentState.Disposing)
+			throw new InvalidOperationException(
+				$"Cannot observe {typeof(TSignal).ToVerboseString()} signals on disposed agent {Agent.Name}."
+			);
+		
 		var module = Agent.GetOrAddModule<SignalObserverModule<TSignal>>();
 		module.AddObserver(observer);
 		return new DisposeCallback(() =>

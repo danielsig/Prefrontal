@@ -18,6 +18,6 @@ internal class LLMEndpointModule : Module
 	}
 	protected internal override async Task InitializeAsync()
 	{
-		
+		await Task.CompletedTask;
 	}
 }

@@ -31,7 +31,7 @@ public interface IAsyncSignalReceiver<TSignal> : IBaseSignalProcessor<TSignal>
 	/// <br/>
 	///
 	/// Example:
-	/// <code>
+	/// <code language="csharp">
 	/// public class MySignalLoggerModule : Module, IAsyncSignalReceiver&lt;MySignal&gt;
 	/// {
 	/// 	public async Task ReceiveSignalAsync(MySignal signal)

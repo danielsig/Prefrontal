@@ -44,7 +44,7 @@ public interface IAsyncSignalInterceptor<TSignal> : IBaseSignalProcessor<TSignal
 	/// <br/>
 	///
 	/// Examples:
-	/// <code>
+	/// <code language="csharp">
 	/// public class MySignalInterceptorModule : Module, IAsyncSignalInterceptor&lt;MySignal&gt;
 	/// {
 	/// 	public async Task&lt;Intercept&lt;MySignal&gt;&gt; InterceptSignalAsync(MySignal signal)

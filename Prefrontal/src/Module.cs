@@ -120,13 +120,29 @@ public abstract class Module
 		Task.Run(() => Agent.SendSignalAsync(signal));
 	}
 
-	public override string ToString()
+	public override string ToString() => TypeName;
+
+	private string? _typeName;
+	internal string TypeName
 	{
-		var name = GetType().Name;
-		if(name.EndsWith("Module"))
-			name = name[..^6];
-		
-		return name;
+		get
+		{
+			if(_typeName is not null)
+				return _typeName;
+			
+			var type = GetType();
+			var name = type.Name;
+			if(name.EndsWith("Module"))
+				name = name[..^6];
+			if(type.IsGenericType)
+				name += '<'
+					+ type.GetGenericArguments()
+						.Select(XType.ToVerboseString)
+						.Join()
+					+ '>';
+
+			return _typeName = name;
+		}
 	}
 
 	/// <summary>

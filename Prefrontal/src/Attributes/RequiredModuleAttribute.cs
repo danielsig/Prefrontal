@@ -6,7 +6,7 @@ namespace Prefrontal.Attributes;
 /// Module dependencies can also be specified in each module's constructor.
 /// <br/>
 /// Example:
-/// <code>
+/// <code language="csharp">
 /// public class MyModule : Module
 /// {
 /// 	[RequiredModule]

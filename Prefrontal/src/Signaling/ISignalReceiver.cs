@@ -10,7 +10,7 @@ public interface ISignalReceiver<TSignal> : IBaseSignalProcessor<TSignal>
 	/// or <see cref="Module.SendSignalAsync{TSignal}(TSignal)"/>.
 	/// <br/>
 	/// Example:
-	/// <code>
+	/// <code language="csharp">
 	/// public class MySignalLoggerModule : Module, ISignalReceiver&lt;MySignal&gt;
 	/// {
 	/// 	public void ReceiveSignal(MySignal signal)

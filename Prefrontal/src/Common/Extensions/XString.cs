@@ -107,7 +107,7 @@ public static class XString
 	/// <summary>
 	/// Wraps the string inside a box with the given dimensions and style.<br/>
 	/// Example:
-	/// <code>
+	/// <code language="csharp">
 	/// var wrapped = "Hello world!".WrapInsideBox(9);
 	/// Console.WriteLine(wrapped);
 	/// // Output:

@@ -63,7 +63,7 @@ public static class XEnumerable
 	/// Handy when you need a run a block of code in an expression.
 	/// <br/>
 	/// Example:
-	/// <code>
+	/// <code language="csharp">
 	/// var avgAndStd = new List&lt;double&gt; { 1, 2, 3 }
 	/// 	.Select(x => x * 2)
 	/// 	.Thru(list =>
@@ -90,7 +90,7 @@ public static class XEnumerable
 	/// Handy when you need to run a block of code in an expression for side effects.
 	/// <br/>
 	/// Example:
-	/// <code>
+	/// <code language="csharp">
 	/// var sum = new List&lt;double&gt; { 1, 2, 3 }
 	/// 	.Select(x => x * 2)
 	/// 	.Tap(list => Console.WriteLine("Doubled: {list.JoinVerbose()}"))
@@ -116,7 +116,7 @@ public static class XEnumerable
 	/// Handy when you need to run a block of code in an expression for side effects.
 	/// <br/>
 	/// Example:
-	/// <code>
+	/// <code language="csharp">
 	/// var allExceptMax = new List&lt;double&gt; { 1, 2, 3 }
 	/// 	.Select(x => x * 2)
 	/// 	.Tap(Enumerable.Max, out var max)

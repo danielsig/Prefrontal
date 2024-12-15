@@ -500,7 +500,7 @@ public class Agent : IDisposable
 			foreach(var module in removed)
 				module.Agent = null!;
 			_modules.RemoveAll(removed.Contains);
-			foreach(var list in SignalProcessorPriorityPerType.Values)
+			foreach(var list in SignalProcessingOrderPerType.Values)
 				list.RemoveAll(removed.Contains);
 		}
 		if(errors?.Count > 0)
@@ -561,7 +561,7 @@ public class Agent : IDisposable
 			{
 				_modules.RemoveAt(index);
 				module.Agent = null!;
-				foreach(var list in SignalProcessorPriorityPerType.Values)
+				foreach(var list in SignalProcessingOrderPerType.Values)
 					list.Remove(module);
 			}
 		}
@@ -735,7 +735,8 @@ public class Agent : IDisposable
 		if(State is Initialized or Initializing)
 			return this;
 
-		var log = Debug.BeginScope("Initializing {Agent}", this);
+		var log = Debug.BeginScopeValues(("Agent", Name));
+		Debug.LogInformation("Initializing {Name}", Name);
 		State = Initializing;
 		try
 		{
@@ -756,6 +757,12 @@ public class Agent : IDisposable
 							.JoinVerbose()}",
 					errors.Select(x => x.error)
 				);
+			Debug.LogInformation("{Name} initialized successfully", Name);
+		}
+		catch
+		{
+			Debug.LogError("Failed to initialize {Name}", Name);
+			throw;
 		}
 		finally
 		{
@@ -789,7 +796,8 @@ public class Agent : IDisposable
 				"Cannot dispose of an agent while it is initializing."
 			);
 
-		var log = Debug.BeginScope("Disposing of {Agent}", this);
+		var log = Debug.BeginScopeValues(("Agent", Name));
+		Debug.LogInformation("Disposing of {Name}", Name);
 		State = Disposing;
 		try
 		{
@@ -812,7 +820,7 @@ public class Agent : IDisposable
 				module.Agent = null!;
 			}
 			_modules.Clear();
-			SignalProcessorPriorityPerType.Clear();
+			SignalProcessingOrderPerType.Clear();
 			if(errors?.Count > 0)
 				throw new AggregateException(
 					$@"Failed to dispose of {
@@ -826,6 +834,12 @@ public class Agent : IDisposable
 					}",
 					errors.Select(x => x.error)
 				);
+			Debug.LogInformation("{Name} disposed successfully", Name);
+		}
+		catch
+		{
+			Debug.LogError("Failed to dispose of {Name}", Name);
+			throw;
 		}
 		finally
 		{
@@ -845,7 +859,7 @@ public class Agent : IDisposable
 	/// If you need a more verbose multiline string representation, use <see cref="ToStringPretty"/> instead.
 	/// <para>This method calls the <see cref="Module.ToString"/> of each module.</para>
 	/// Example:
-	/// <code>
+	/// <code language="csharp">
 	/// 	Console.WriteLine(
 	/// 		new Agent
 	/// 		{
@@ -866,27 +880,24 @@ public class Agent : IDisposable
 	/// 	"Agent <see cref="Name"/> { <see cref="Modules"/>  }"
 	/// </returns>
 	public override string ToString() =>
-		$@"{
-			State switch
-			{
-				Initialized => "",
-				Uninitialized => "Uninitialized ",
-				Initializing => "Initializing ",
-				Disposed => "Disposed ",
-				Disposing => "Disposing ",
-				_ => State + " "
-			}
-		}Agent {
+		$@"Agent {
 			Name?.NullIfWhiteSpace()
 				?.WithMaxLengthSuffixed(20)
 				?.Thru(x => x + ' ')
 			?? ""
+		}{
+			State switch
+			{
+				Initialized => "",
+				Uninitialized => "(uninitialized) ",
+				Initializing => "(initializing) ",
+				Disposed => "(disposed) ",
+				Disposing => "(disposing) ",
+				_ => State + " "
+			}
 		}{{ {
 			_modules
-				.Select(x
-					=> x.ToString()?.Before('\n').WithMaxLengthSuffixed(20)
-					?? x.GetType().Name
-				)
+				.Select(x => x.TypeName.WithMaxLengthSuffixed(20))
 				.Join()
 		} }}";
 
@@ -898,7 +909,7 @@ public class Agent : IDisposable
 	/// <br/>
 	/// Agent <see cref="Name"/> + <see cref="Description"/>
 	/// fit on one line (does not exceed <paramref name="maxWidth"/>)
-	/// <code>
+	/// <code language="csharp">
 	/// 	Console.WriteLine(
 	/// 		new Agent
 	/// 		{
@@ -911,13 +922,16 @@ public class Agent : IDisposable
 	/// 		.ToStringPretty()
 	/// 	);
 	/// 	// Output:
-	/// 	// Agent foobar (A placeholder agent)
+	/// 	// Agent foobar
+	/// 	// ╭─────────────────────╮
+	/// 	// │ A placeholder agent │
+	/// 	// ╰─────────────────────╯
 	/// 	//   ├─ Foo
 	/// 	//   └─ Bar
 	/// </code>
 	/// Agent <see cref="Name"/> + <see cref="Description"/> exceed <paramref name="maxWidth"/>
 	/// and <see cref="Description"/> gets wrapped in a box drawing bubble.
-	/// <code>
+	/// <code language="csharp">
 	/// 	Console.WriteLine(
 	/// 		new Agent
 	/// 		{
@@ -951,27 +965,26 @@ public class Agent : IDisposable
 	{
 		maxWidth = maxWidth.OrAtLeast(10);
 		var name = $@"{
-				State switch
-				{
-					Initialized => "",
-					Uninitialized => "Uninitialized ",
-					Initializing => "Initializing ",
-					Disposed => "Disposed ",
-					Disposing => "Disposing ",
-					_ => State + " "
-				}
-			}{(
+			(
 				string.IsNullOrWhiteSpace(Name)
 					? "Anonymous Agent"
 					: "Agent " + Name
-			)}"
+			)}{
+				State switch
+				{
+					Initialized => "",
+					Uninitialized => " (uninitialized)",
+					Initializing => " (initializing)",
+					Disposed => " (disposed)",
+					Disposing => " (disposing)",
+					_ => " " + State
+				}
+			}"
 			.WithMaxLengthSuffixed(maxWidth);
 		
 		var description = string.IsNullOrWhiteSpace(Description)
 			? ""
-			: Description.Length < (maxWidth - name.Length - 3) && !Description.Contains('\n')
-				? $" ({Description})" // single line description
-				: $"\n{Description.WrapInsideBox(maxWidth)}"; // multi line description, with box drawing bubble around it
+			: $"\n{Description.WrapInsideBox(maxWidth)}";
 
 		return $@"{name}{description}{
 			_modules.Count switch { 0 => "", 1 => "\n  └─ ", _ => "\n  ├─ " }
@@ -1003,7 +1016,7 @@ public class Agent : IDisposable
 
 	#region Signals
 
-	internal readonly ConcurrentDictionary<Type, List<Module>> SignalProcessorPriorityPerType = [];
+	internal readonly ConcurrentDictionary<Type, List<Module>> SignalProcessingOrderPerType = [];
 
 	/// <summary>
 	/// Sends a signal asynchronously to all modules on the agent that implement one of the following:
@@ -1028,12 +1041,13 @@ public class Agent : IDisposable
 		if(State is Disposed or Disposing)
 			throw new ObjectDisposedException("Disposed agents cannot send signals.");
 		
-		var order = SignalProcessorPriorityPerType.GetValueOrDefault(typeof(TSignal));
-		var processors = _modules.OfType<IBaseSignalProcessor<TSignal>>();
-		if(order is not null)
-			processors = processors.OrderBy(p => order.IndexOf((Module)p) switch { -1 => int.MaxValue, var i => i });
+		Debug.LogTrace("Sending signal on Agent {agent}: {signal}", Name, signal);
 		
+		var processors = _modules.OfType<IBaseSignalProcessor<TSignal>>();
+		if(SignalProcessingOrderPerType.GetValueOrDefault(typeof(TSignal)) is { } order)
+			processors = processors.OrderBy(p => order.IndexOf((Module)p) switch { -1 => int.MaxValue, var i => i });
 		var list = new List<IBaseSignalProcessor<TSignal>>(processors);
+		
 		var index = -1;
 		foreach(var processor in list)
 			try
@@ -1112,7 +1126,7 @@ public class Agent : IDisposable
 	/// Specifies the order in which modules must process signals of the given type.
 	/// <br/>
 	/// Example:
-	/// <code>
+	/// <code language="csharp">
 	/// var myAgent = new Agent()
 	/// 	.AddModule&lt;LastModule&gt;()
 	/// 	.AddModule&lt;ThirdModule&gt;()
@@ -1133,19 +1147,22 @@ public class Agent : IDisposable
 	/// <seealso cref="IAsyncSignalReceiver{TSignal}"/>
 	public Agent SetSignalProcessingOrder<TSignal>(Func<Agent, List<Module>> getModuleOrder)
 	{
+		if(State is Disposed or Disposing)
+			throw new ObjectDisposedException("Cannot set signal processing order on a disposed agent.");
+		
 		var moduleOrder = getModuleOrder(this);
 		foreach(var module in moduleOrder)
 		{
 			if(module is not IBaseSignalProcessor<TSignal>)
 				throw new ArgumentException($"Module {module} does not implement {typeof(IBaseSignalProcessor<TSignal>).ToVerboseString()}.");
 			if(module.Agent != this)
-				throw new ArgumentException($"Module {module} does not belong to the agent.");
+				throw new ArgumentException($"Module {module} does not belong to {this}.");
 		}
 		var type = typeof(TSignal);
-		if(SignalProcessorPriorityPerType.TryGetValue(type, out var before))
-			SignalProcessorPriorityPerType[type] = [.. moduleOrder, .. before.Except(moduleOrder)];
-		else
-			SignalProcessorPriorityPerType[type] = [.. moduleOrder];
+		SignalProcessingOrderPerType.AddOrUpdate(type,
+			_ => [.. moduleOrder],
+			(_, before) => [.. moduleOrder, .. before.Except(moduleOrder)]
+		);
 		return this;
 	}
 
@@ -1155,7 +1172,7 @@ public class Agent : IDisposable
 	/// that are sent on the agent.
 	/// <br/>
 	/// Use this method when configuring the agent in a method chain. Example:
-	/// <code>
+	/// <code language="csharp">
 	/// 	var myAgent = new Agent()
 	/// 		.AddModule&lt;MyModule&gt;()
 	/// 		.ObserveSignals&lt;MySignal&gt;(out var mySignals)
@@ -1181,7 +1198,7 @@ public class Agent : IDisposable
 	/// that are sent on the agent.
 	/// <br/>
 	/// Example:
-	/// <code>
+	/// <code language="csharp">
 	/// 	var myAgent = new Agent()
 	/// 		.AddModule&lt;MyModule&gt;()
 	/// 		.Initialize();

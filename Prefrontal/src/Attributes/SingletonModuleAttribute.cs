@@ -4,7 +4,7 @@ namespace Prefrontal.Attributes;
 /// Specifies that there can only be one instance of this module type per <see cref="Agent"/>.
 /// <br/>
 /// Example:
-/// <code>
+/// <code language="csharp">
 /// [SingletonModule]
 /// public class MySingletonModule : Module
 /// {
