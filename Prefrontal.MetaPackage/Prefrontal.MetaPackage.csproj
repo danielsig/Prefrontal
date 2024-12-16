@@ -1,0 +1,20 @@
+﻿
+<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<AssemblyName>Prefrontal</AssemblyName>
+		<RootNamespace>$(AssemblyName)</RootNamespace>
+		<TargetFrameworks>net9.0</TargetFrameworks>
+	</PropertyGroup>
+	<PropertyGroup>
+		<!-- NuGet Package Settings -->
+		<Title>Prefrontal</Title>
+		<Description>
+			Prefrontal common package collection,
+			including Prefrontal.Core and other useful packages.
+		</Description>
+	</PropertyGroup>
+	<ItemGroup>
+		<ProjectReference Include="../Prefrontal.Core/Prefrontal.Core.csproj" />
+		<ProjectReference Include="../Prefrontal.Modules/Prefrontal.Modules.csproj" />
+	</ItemGroup>
+</Project>

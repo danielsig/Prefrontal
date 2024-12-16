@@ -4,9 +4,9 @@
     {
       "src": [
         {
-          "src": "../../Prefrontal",
+          "src": "../",
           "files": [
-            "**/*.csproj"
+            "Prefrontal.*/*.csproj"
           ]
         }
       ],

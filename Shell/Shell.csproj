@@ -1,16 +1,19 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
+		<RootNamespace>Prefrontal.Shell</RootNamespace>
 		<OutputType>Exe</OutputType>
 		<TargetFramework>net9.0</TargetFramework>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
 		<LangVersion>preview</LangVersion>
-		<RootNamespace>Prefrontal.Shell</RootNamespace>
+		<NoWarn>
+			IDE0130
+		</NoWarn>
 	</PropertyGroup>
 
 	<ItemGroup>
-		<ProjectReference Include="..\Prefrontal\Prefrontal.csproj" />
+		<ProjectReference Include="..\Prefrontal.MetaPackage\Prefrontal.MetaPackage.csproj" />
 	</ItemGroup>
 
 </Project>

@@ -555,7 +555,7 @@ public class Agent : IDisposable
 			foreach(var module in removed)
 				module.Agent = null!;
 			_modules.RemoveAll(removed.Contains);
-			foreach(var list in SignalProcessingOrderPerType.Values)
+			foreach(var list in _signalProcessingOrderPerType.Values)
 				list.RemoveAll(removed.Contains);
 		}
 		if(errors?.Count > 0)
@@ -616,7 +616,7 @@ public class Agent : IDisposable
 			{
 				_modules.RemoveAt(index);
 				module.Agent = null!;
-				foreach(var list in SignalProcessingOrderPerType.Values)
+				foreach(var list in _signalProcessingOrderPerType.Values)
 					list.Remove(module);
 			}
 		}
@@ -875,7 +875,7 @@ public class Agent : IDisposable
 				module.Agent = null!;
 			}
 			_modules.Clear();
-			SignalProcessingOrderPerType.Clear();
+			_signalProcessingOrderPerType.Clear();
 			if(errors?.Count > 0)
 				throw new AggregateException(
 					$@"Failed to dispose of {
@@ -911,8 +911,11 @@ public class Agent : IDisposable
 
 	/// <summary>
 	/// Returns a single-line string representation of the agent and its modules.<br/>
-	/// If you need a more verbose multiline string representation, use <see cref="ToStringPretty"/> instead.
-	/// <para>This method calls the <see cref="Module.ToString"/> of each module.</para>
+	/// If you need a more verbose multiline string representation, use <see cref="ToStringPretty">ToStringPretty()</see> instead.
+	/// <para>
+	/// 	Unlike <see cref="ToStringPretty">ToStringPretty()</see>, this method
+	/// 	lists each module's type instead of calling their <see cref="Module.ToString"/> method.
+	/// </para>
 	/// Example:
 	/// <code language="csharp">
 	/// 	Console.WriteLine(
@@ -926,6 +929,8 @@ public class Agent : IDisposable
 	/// 		.Initialize()
 	/// 		.ToString()
 	/// 	);
+	/// 	public class FooModule : Module { }
+	/// 	public class BarModule : Module { }
 	/// 	// Output:
 	/// 	// Agent foobar { Foo, Bar }
 	/// </code>
@@ -957,13 +962,17 @@ public class Agent : IDisposable
 		} }}";
 
 	/// <summary>
-	/// Returns a multiline string representation of the agent and its modules.<br/>
-	/// Unlike <see cref="ToString"/> this method includes the <see cref="Description"/>.
-	/// <para>This method calls the <see cref="Module.ToString"/> of each module.</para>
+	/// Returns a multiline string representation of the agent and its modules.
+	/// <para>
+	/// 	Unlike <see cref="ToString"/>
+	/// 	this method includes the <see cref="Description"/>
+	/// 	and lists the results of calling
+	/// 	each module's <see cref="Module.ToString"/>.
+	/// </para>
 	/// Examples:
 	/// <br/>
-	/// Agent <see cref="Name"/> + <see cref="Description"/>
-	/// fit on one line (does not exceed <paramref name="maxWidth"/>)
+	/// Agent <see cref="Description"/>
+	/// fits on one line (does not exceed <paramref name="maxWidth"/>).
 	/// <code language="csharp">
 	/// 	Console.WriteLine(
 	/// 		new Agent
@@ -976,6 +985,8 @@ public class Agent : IDisposable
 	/// 		.Initialize()
 	/// 		.ToStringPretty()
 	/// 	);
+	/// 	public class FooModule : Module { }
+	/// 	public class BarModule : Module { }
 	/// 	// Output:
 	/// 	// Agent foobar
 	/// 	// ╭─────────────────────╮
@@ -984,8 +995,9 @@ public class Agent : IDisposable
 	/// 	//   ├─ Foo
 	/// 	//   └─ Bar
 	/// </code>
-	/// Agent <see cref="Name"/> + <see cref="Description"/> exceed <paramref name="maxWidth"/>
-	/// and <see cref="Description"/> gets wrapped in a box drawing bubble.
+	/// Agent <see cref="Description"/>
+	/// and <c>Foo.ToString()</c> gets wrapped
+	/// (length exceeds <paramref name="maxWidth"/>).
 	/// <code language="csharp">
 	/// 	Console.WriteLine(
 	/// 		new Agent
@@ -998,13 +1010,19 @@ public class Agent : IDisposable
 	/// 		.Initialize()
 	/// 		.ToStringPretty()
 	/// 	);
+	/// 	public class FooModule : Module
+	/// 	{
+	/// 		public override string ToString() => "Foo with a long description that needs to be wrapped around";
+	/// 	}
+	/// 	public class BarModule : Module { }
 	/// 	// Output:
 	/// 	// Agent foobar
 	/// 	// ╭─────────────────────────────────────────────╮
 	/// 	// │ A placeholder agent with a seriously long   │
 	/// 	// │ description that needs to be wrapped around │
 	/// 	// ╰─────────────────────────────────────────────╯
-	/// 	//   ├─ Foo
+	/// 	//   ├─ Foo with a long description that needs to be
+	/// 	//   │  wrapped around
 	/// 	//   └─ Bar
 	/// </code>
 	/// </summary>
@@ -1066,12 +1084,41 @@ public class Agent : IDisposable
 				)
 		}";
 	}
-	
+
 	#endregion
 
 	#region Signals
 
-	internal readonly ConcurrentDictionary<Type, List<Module>> SignalProcessingOrderPerType = [];
+	/// <summary>
+	/// Sends a signal to all modules on the agent that implement one of the following:
+	/// <list type="bullet">
+	/// 	<item><see cref="ISignalReceiver{TSignal}"/></item>
+	/// 	<item><see cref="ISignalInterceptor{TSignal}"/></item>
+	/// 	<item><see cref="IAsyncSignalReceiver{TSignal}"/></item>
+	/// 	<item><see cref="IAsyncSignalInterceptor{TSignal}"/></item>
+	/// </list>
+	/// This method is non-blocking and returns immediately
+	/// because it defers the signal processing to a background task.
+	/// <para>
+	/// It's perfectly fine to add and remove modules during signal processing,
+	/// but be aware that modules that are removed will not receive the signal
+	/// and modules that are added will only receive future signals, i.e. sent after they were added.
+	/// </para>
+	/// </summary>
+	/// <seealso cref="SendSignalAsync{TSignal}"/>
+	/// <param name="signal">The signal to send.</param>
+	/// <param name="delay">(optional) The delay before sending the signal.</param>
+	/// <typeparam name="TSignal">The type of signal to send.</typeparam>
+	public void SendSignal<TSignal>(TSignal signal, TimeSpan? delay = null)
+	{
+		if(delay is null)
+			Task.Run(() => SendSignalAsync(signal));
+		else
+			Task.Delay(delay.Value)
+				.ContinueWith(_ => SendSignalAsync(signal));
+	}
+
+	private readonly ConcurrentDictionary<Type, List<Module>> _signalProcessingOrderPerType = [];
 
 	/// <summary>
 	/// Sends a signal asynchronously to all modules on the agent that implement one of the following:
@@ -1096,15 +1143,32 @@ public class Agent : IDisposable
 		if(State is Disposed or Disposing)
 			throw new ObjectDisposedException("Disposed agents cannot send signals.");
 		
-		Debug.LogTrace("Sending signal on Agent {agent}: {signal}", Name, signal);
+		var processors
+			= _signalProcessingOrderPerType.GetValueOrDefault(typeof(TSignal)) is { } order
+				? order
+					.OfType<IBaseSignalProcessor<TSignal>>()
+					.ToList()
+					.Tap(list =>
+					{
+						foreach(var module in _modules)
+							if(module is IBaseSignalProcessor<TSignal> processor
+							&& !list.Contains(processor))
+								list.Add(processor);
+					})
+				: _modules
+					.OfType<IBaseSignalProcessor<TSignal>>()
+					.ToList();
 		
-		var processors = _modules.OfType<IBaseSignalProcessor<TSignal>>();
-		if(SignalProcessingOrderPerType.GetValueOrDefault(typeof(TSignal)) is { } order)
-			processors = processors.OrderBy(p => order.IndexOf((Module)p) switch { -1 => int.MaxValue, var i => i });
-		var list = new List<IBaseSignalProcessor<TSignal>>(processors);
-		
+		if(processors.Count == 0)
+			return;
+
+		Debug.LogTrace(
+			"Sending signal on Agent {name} to {count} Modules: {signal}",
+			Name, processors.Count, signal
+		);
+
 		var index = -1;
-		foreach(var processor in list)
+		foreach(var processor in processors)
 			try
 			{
 				++index;
@@ -1156,28 +1220,6 @@ public class Agent : IDisposable
 	}
 
 	/// <summary>
-	/// Sends a signal to all modules on the agent that implement one of the following:
-	/// <list type="bullet">
-	/// 	<item><see cref="ISignalReceiver{TSignal}"/></item>
-	/// 	<item><see cref="ISignalInterceptor{TSignal}"/></item>
-	/// 	<item><see cref="IAsyncSignalReceiver{TSignal}"/></item>
-	/// 	<item><see cref="IAsyncSignalInterceptor{TSignal}"/></item>
-	/// </list>
-	/// This method is non-blocking and returns immediately
-	/// because it defers the signal processing to a background task.
-	/// <para>
-	/// It's perfectly fine to add and remove modules during signal processing,
-	/// but be aware that modules that are removed will not receive the signal
-	/// and modules that are added will only receive future signals, i.e. sent after they were added.
-	/// </para>
-	/// </summary>
-	/// <seealso cref="SendSignalAsync{TSignal}"/>
-	/// <param name="signal">The signal to send.</param>
-	/// <typeparam name="TSignal">The type of signal to send.</typeparam>
-	public void SendSignal<TSignal>(TSignal signal)
-		=> Task.Run(() => SendSignalAsync(signal));
-
-	/// <summary>
 	/// Specifies the order in which modules must process signals of the given type.
 	/// <br/>
 	/// Example:
@@ -1214,7 +1256,7 @@ public class Agent : IDisposable
 				throw new ArgumentException($"Module {module} does not belong to {this}.");
 		}
 		var type = typeof(TSignal);
-		SignalProcessingOrderPerType.AddOrUpdate(type,
+		_signalProcessingOrderPerType.AddOrUpdate(type,
 			_ => [.. moduleOrder],
 			(_, before) => [.. moduleOrder, .. before.Except(moduleOrder)]
 		);

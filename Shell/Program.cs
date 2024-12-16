@@ -5,6 +5,18 @@ using Prefrontal.Signaling;
 Console.OutputEncoding = System.Text.Encoding.UTF8;
 Console.InputEncoding = System.Text.Encoding.UTF8;
 
+Console.WriteLine(
+	new Agent
+	{
+		Name = "foobar",
+		Description = "A placeholder agent with a seriously long description that needs to be wrapped around",
+	}
+	.AddModule<Foo2Module>()
+	.AddModule<Bar2Module>()
+	.Initialize()
+	.ToStringPretty()
+);
+
 var agent = new Agent
 	{
 		Name = "foobar",
@@ -82,4 +94,14 @@ internal class BarModule : Module, ISignalReceiver<string>
 	{
 		Console.WriteLine($"Bar received signal: {signal}");
 	}
+}
+
+
+public class Foo2Module : Module
+{
+	public override string ToString() => "Foo with a long description that needs to be wrapped around";
+}
+
+public class Bar2Module : Module
+{
 }
