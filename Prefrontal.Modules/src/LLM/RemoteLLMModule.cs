@@ -17,11 +17,6 @@ public class RemoteLLMModule
 	{
 		Endpoint = endpoint;
 		_apiKey = apiKey;
-
-		ReceiveSignals((Dialog dialog) =>
-		{
-			// TODO: Async signals need to work
-		});
 	}
 
 	protected override async Task InitializeAsync()

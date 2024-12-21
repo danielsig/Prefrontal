@@ -140,4 +140,16 @@ public static class XEnumerable
 		this IEnumerable<T> enumerable,
 		params T[] exceptions
 	) => Enumerable.Except(enumerable, exceptions);
+
+	public static List<T>? ToListIfNotEmpty<T>(this IEnumerable<T> enumerable)
+	{
+		if(enumerable?.GetEnumerator() is not { } enumerator
+		|| !enumerator.MoveNext())
+			return null;
+
+		var list = new List<T>();
+		do list.Add(enumerator.Current);
+		while(enumerator.MoveNext());
+		return list;
+	}
 }

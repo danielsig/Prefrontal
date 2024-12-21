@@ -1,6 +1,6 @@
 ﻿using Prefrontal;
 using Prefrontal.Common.Extensions;
-using Prefrontal.Signaling;
+using Prefrontal.Common.Extensions.Async;
 
 Console.OutputEncoding = System.Text.Encoding.UTF8;
 Console.InputEncoding = System.Text.Encoding.UTF8;
@@ -42,7 +42,11 @@ Console.WriteLine();
 Console.WriteLine(agent.ToStringPretty());
 Console.WriteLine();
 
-await agent.SendSignalAsync("!olleH"); // cSpell: words olleH
+var response = await agent
+	.SendSignalAsync<string, object>("!olleH") // cSpell: words olleH
+	.ToListAsync()
+	.Then(l => l.Join());
+Console.WriteLine(response);
 
 agent.Dispose();
 
@@ -67,11 +71,13 @@ internal class FooModule : Module
 
 	protected override async Task InitializeAsync()
 	{
-		InterceptSignals((string signal) =>
+		InterceptSignalsAsync<string, int>(s =>
 		{
-			var reversedSignal = signal.Reverse().Join("");
-			Console.WriteLine($"Foo intercepted signal: {signal} and reversed it to {reversedSignal}");
-			return reversedSignal;
+			var reversedSignal = s.Signal.Reverse().Join("");
+			Console.WriteLine($"Foo intercepted signal: {s.Signal} and reversed it to {reversedSignal}");
+			return s.Next(reversedSignal)
+				.Select(r => r * 2)
+				.Append(-1);
 		});
 		await Task.Delay(1000);
 	}
@@ -87,9 +93,10 @@ internal class BarModule : Module
 	protected override async Task InitializeAsync()
 	{
 		await Task.Delay(2000);
-		ReceiveSignals<string>(signal =>
+		ReceiveSignals((string signal) =>
 		{
 			Console.WriteLine($"Bar received signal: {signal}");
+			return 44;
 		});
 	}
 }
