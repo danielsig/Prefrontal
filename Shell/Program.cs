@@ -58,7 +58,7 @@ Console.ReadKey();
 
 
 
-internal class FooModule : Module, ISignalInterceptor<string>
+internal class FooModule : Module
 {
 	public override string ToString()
 	{
@@ -67,18 +67,17 @@ internal class FooModule : Module, ISignalInterceptor<string>
 
 	protected override async Task InitializeAsync()
 	{
+		InterceptSignals((string signal) =>
+		{
+			var reversedSignal = signal.Reverse().Join("");
+			Console.WriteLine($"Foo intercepted signal: {signal} and reversed it to {reversedSignal}");
+			return reversedSignal;
+		});
 		await Task.Delay(1000);
-	}
-
-	public Intercept<string> InterceptSignal(string signal)
-	{
-		var reversedSignal = signal.Reverse().Join("");
-		Console.WriteLine($"Foo intercepted signal: {signal} and reversed it to {reversedSignal}");
-		return reversedSignal;
 	}
 }
 
-internal class BarModule : Module, ISignalReceiver<string>
+internal class BarModule : Module
 {
 	public override string ToString()
 	{
@@ -88,11 +87,10 @@ internal class BarModule : Module, ISignalReceiver<string>
 	protected override async Task InitializeAsync()
 	{
 		await Task.Delay(2000);
-	}
-
-	public void ReceiveSignal(string signal)
-	{
-		Console.WriteLine($"Bar received signal: {signal}");
+		ReceiveSignals<string>(signal =>
+		{
+			Console.WriteLine($"Bar received signal: {signal}");
+		});
 	}
 }
 

@@ -1,3 +1,7 @@
+using System.Security.Cryptography.X509Certificates;
+using System.Xml.Serialization;
+using Prefrontal.Reactive;
+
 namespace Prefrontal;
 
 /// <summary>
@@ -34,15 +38,15 @@ namespace Prefrontal;
 ///			but it is recommended to create your own signal types.
 ///		</item>
 ///		<item>
-///			Signals are processed by modules
-///			that implement one of the following:
-/// 		<list type="bullet">
-/// 			<item><see cref="ISignalReceiver{TSignal}"/></item>
-/// 			<item><see cref="ISignalInterceptor{TSignal}"/></item>
-/// 			<item><see cref="IAsyncSignalReceiver{TSignal}"/></item>
-/// 			<item><see cref="IAsyncSignalInterceptor{TSignal}"/></item>
-/// 		</list>
-///			These interfaces have a single method that gets called with the signal as a parameter.
+///!			Signals are processed by modules
+///!			that implement one of the following:
+///! 		<list type="bullet">
+///! 			<item><see cref="ISignalReceiver{TSignal}"/></item>
+///! 			<item><see cref="ISignalInterceptor{TSignal}"/></item>
+///! 			<item><see cref="IAsyncSignalReceiver{TSignal}"/></item>
+///! 			<item><see cref="IAsyncSignalInterceptor{TSignal}"/></item>
+///! 		</list>
+///!			These interfaces have a single method that gets called with the signal as a parameter.
 ///		</item>
 ///		<item>
 ///			Modules can implement <see cref="IDisposable"/>
@@ -65,6 +69,13 @@ public abstract class Module
 	/// To check if the module is still part of the agent, you can <see cref="implicit operator bool">implicitly cast the module to a boolean</see>.
 	/// </summary>
 	public Agent Agent { get; internal set; } = null!;
+	protected Module() { }
+	protected Module(Agent agent)
+	{
+		Agent = agent;
+	}
+
+	internal readonly List<IDisposable> _disposables = [];
 
 	/// <summary>
 	/// The logger that this module can use to log messages.
@@ -114,18 +125,34 @@ public abstract class Module
 		return Task.CompletedTask;
 	}
 	
-	/// <inheritdoc cref="Agent.SendSignalAsync{TSignal}(TSignal)"/>
-	protected Task SendSignalAsync<TSignal>(TSignal signal)
-		=> Agent?.SendSignalAsync(signal)
-		?? Task.FromException(new InvalidOperationException("The module has been removed from the agent."));
-
 	/// <inheritdoc cref="Agent.SendSignal{TSignal}(TSignal)"/>
 	protected void SendSignal<TSignal>(TSignal signal)
 	{
-		if(Agent is null)
-			throw new InvalidOperationException("The module has been removed from the agent.");
-		Task.Run(() => Agent.SendSignalAsync(signal));
+		ThrowIfNoAgent();
+		Agent.SendSignal(signal);
 	}
+	/// <inheritdoc cref="Agent.SendSignalAsync{TSignal}(TSignal)"/>
+	protected Task SendSignalAsync<TSignal>(TSignal signal)
+	{
+		return Agent.SendSignalAsync(signal);
+	}
+
+	protected void ReceiveSignals<TSignal>(Action<TSignal> receiver)
+		=> SubscribeToSignals<TSignal>(subject =>
+			new SignalSubject<TSignal>.SignalReceiverSubscription(subject, receiver, this)
+		);
+	protected void InterceptSignals<TSignal>(Func<TSignal, Intercept<TSignal>> interceptor)
+		=> SubscribeToSignals<TSignal>(subject =>
+			new SignalSubject<TSignal>.SignalInterceptorSubscription(subject, interceptor, this)
+		);
+	protected void ReceiveSignals<TSignal>(Func<TSignal, Task> receiver)
+		=> SubscribeToSignals<TSignal>(subject =>
+			new SignalSubject<TSignal>.AsyncSignalReceiverSubscription(subject, receiver, this)
+		);
+	protected void InterceptSignals<TSignal>(Func<TSignal, Task<Intercept<TSignal>>> interceptor)
+		=> SubscribeToSignals<TSignal>(subject =>
+			new SignalSubject<TSignal>.AsyncSignalInterceptorSubscription(subject, interceptor, this)
+		);
 
 	/// <summary>
 	/// 	Unless overridden,
@@ -164,4 +191,23 @@ public abstract class Module
 	/// </summary>
 	public static implicit operator bool(Module module)
 		=> module?.Agent is not null;
+	
+
+	#region private
+	private void ThrowIfNoAgent()
+	{
+		if(Agent is null)
+			throw new InvalidOperationException("The module does not belong to an agent.");
+	}
+	private void SubscribeToSignals<TSignal>(
+		Func<SignalSubject<TSignal>, SignalSubject<TSignal>.SignalSubscription> makeSubscription
+	)
+	{
+		ThrowIfNoAgent();
+		var subject = (SignalSubject<TSignal>)Agent.ObserveSignals<TSignal>();
+		_disposables.Add(
+			subject.Subscribe(makeSubscription(subject))
+		);
+	}
+	#endregion
 }

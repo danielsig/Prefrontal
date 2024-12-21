@@ -17,6 +17,11 @@ public class RemoteLLMModule
 	{
 		Endpoint = endpoint;
 		_apiKey = apiKey;
+
+		ReceiveSignals((Dialog dialog) =>
+		{
+			// TODO: Async signals need to work
+		});
 	}
 
 	protected override async Task InitializeAsync()
@@ -30,12 +35,12 @@ public class RemoteLLMModule
 		_httpClient.DefaultRequestHeaders.Add("Content-Type", "application/json");
 	}
 
-	public Task<Dialog> ContinueAsync(Dialog context)
+	public Task<DialogContinuation> ContinueAsync(Dialog context)
 	{
 		throw new NotImplementedException();
 	}
 
-	public IAsyncEnumerable<DialogMessage> Continue(Dialog dialog)
+	public IAsyncEnumerable<DialogContinuation> Continue(Dialog dialog)
 	{
 		throw new NotImplementedException();
 	}

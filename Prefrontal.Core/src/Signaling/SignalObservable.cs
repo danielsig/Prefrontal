@@ -25,3 +25,4 @@ internal record SignalObservable<TSignal>(Agent Agent) : IObservable<TSignal>
 		);
 	}
 }
+

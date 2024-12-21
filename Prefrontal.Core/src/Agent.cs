@@ -526,8 +526,17 @@ public class Agent : IDisposable
 		|| removed.Count == 0)
 			return false;
 
-		List<(string module, Exception error)>? errors = null;
-		
+		using var errors = new ExceptionAggregator<string>(errorList =>
+			$@"Failed to dispose of {
+				errorList.Count
+			} modules on agent: {
+				Name
+			}: {
+				errorList
+					.Select(x => x.value)
+					.JoinVerbose()
+			}"
+		);
 		foreach(var module in removed)
 			try
 			{
@@ -548,29 +557,19 @@ public class Agent : IDisposable
 			}
 			catch(Exception error)
 			{
-				(errors ??= []).Add((module.ToString(), error));
+				errors.Add(error, module.ToString());
 			}
 		if(removed.Count > 0)
 		{
 			foreach(var module in removed)
+			{
+				foreach(var disposable in module._disposables)
+					disposable.Dispose();
+				module._disposables.Clear();
 				module.Agent = null!;
+			}
 			_modules.RemoveAll(removed.Contains);
-			foreach(var list in _signalProcessingOrderPerType.Values)
-				list.RemoveAll(removed.Contains);
 		}
-		if(errors?.Count > 0)
-			throw new AggregateException(
-				$@"Failed to dispose of {
-					errors.Count
-				} modules on agent: {
-					Name
-				}: {
-					errors
-						.Select(x => x.module)
-						.JoinVerbose()
-				}",
-				errors.Select(x => x.error)
-			);
 		return removed.Count > 0;
 	}
 
@@ -614,10 +613,11 @@ public class Agent : IDisposable
 		{
 			if(index >= 0) // if the module did not cancel the removal
 			{
-				_modules.RemoveAt(index);
+				foreach(var disposable in module._disposables)
+					disposable.Dispose();
+				module._disposables.Clear();
 				module.Agent = null!;
-				foreach(var list in _signalProcessingOrderPerType.Values)
-					list.Remove(module);
+				_modules.RemoveAt(index);
 			}
 		}
 	}
@@ -795,7 +795,17 @@ public class Agent : IDisposable
 		State = Initializing;
 		try
 		{
-			List<(string module, Exception error)>? errors = null;
+			using var errors = new ExceptionAggregator<string>(errorList =>
+				$@"Failed to initialize {
+					errorList.Count
+				} modules on agent: {
+					Name
+				}: {
+					errorList
+						.Select(x => x.value)
+						.JoinVerbose()
+				}"
+			);
 			foreach(var module in _modules.ToList())
 				try
 				{
@@ -803,15 +813,8 @@ public class Agent : IDisposable
 				}
 				catch(Exception error)
 				{
-					(errors ??= []).Add((module.ToString(), error));
+					errors.Add(error, module.ToString());
 				}
-			if(errors?.Count > 0)
-				throw new AggregateException(
-					$@"Failed to initialize {errors.Count} modules on agent: {Name}: {errors
-							.Select(x => x.module)
-							.JoinVerbose()}",
-					errors.Select(x => x.error)
-				);
 			Debug.LogInformation("{Name} initialized successfully", Name);
 		}
 		catch
@@ -856,7 +859,17 @@ public class Agent : IDisposable
 		State = Disposing;
 		try
 		{
-			List<(string module, Exception error)>? errors = null;
+			using var errors = new ExceptionAggregator<string>(errorList =>
+				$@"Failed to dispose of {
+						errorList.Count
+					} modules on Agent {
+						Name
+					}: {
+						errorList
+							.Select(x => x.value)
+							.JoinVerbose()
+					}"
+			);
 
 			// dispose of the modules in reverse order
 			var modulesReversed = new List<Module>(_modules.Reverse<Module>());
@@ -870,26 +883,14 @@ public class Agent : IDisposable
 					catch(Exception error)
 					{
 						if(error is not InvalidOperationException) // ignore cancellation
-							(errors ??= []).Add((module.ToString(), error));
+							errors.Add(error, module.ToString());
 					}
 				module.Agent = null!;
 			}
 			_modules.Clear();
-			_signalProcessingOrderPerType.Clear();
-			if(errors?.Count > 0)
-				throw new AggregateException(
-					$@"Failed to dispose of {
-						errors.Count
-					} modules on Agent {
-						Name
-					}: {
-						errors
-							.Select(x => x.module)
-							.JoinVerbose()
-					}",
-					errors.Select(x => x.error)
-				);
-			Debug.LogInformation("{Name} disposed successfully", Name);
+			_signalSubjectByType.Clear();
+			if(!errors.HasErrors)
+				Debug.LogInformation("{Name} disposed successfully", Name);
 		}
 		catch
 		{
@@ -1089,50 +1090,90 @@ public class Agent : IDisposable
 
 	#region Signals
 
+	private readonly ConcurrentDictionary<Type, IDisposable> _signalSubjectByType = [];
+
 	/// <summary>
-	/// Sends a signal to all modules on the agent that implement one of the following:
-	/// <list type="bullet">
-	/// 	<item><see cref="ISignalReceiver{TSignal}"/></item>
-	/// 	<item><see cref="ISignalInterceptor{TSignal}"/></item>
-	/// 	<item><see cref="IAsyncSignalReceiver{TSignal}"/></item>
-	/// 	<item><see cref="IAsyncSignalInterceptor{TSignal}"/></item>
-	/// </list>
-	/// This method is non-blocking and returns immediately
-	/// because it defers the signal processing to a background task.
-	/// <para>
-	/// It's perfectly fine to add and remove modules during signal processing,
-	/// but be aware that modules that are removed will not receive the signal
-	/// and modules that are added will only receive future signals, i.e. sent after they were added.
-	/// </para>
+	/// Returns an <see cref="IObservable{TSignal}"/>
+	/// that emits all future signals of type <typeparamref name="TSignal"/>
+	/// that are sent on the agent.
+	/// <br/>
+	/// Example:
+	/// <code language="csharp">
+	/// 	var myAgent = new Agent()
+	/// 		.AddModule&lt;MyModule&gt;()
+	/// 		.Initialize();
+	/// 	myAgent
+	/// 		.ObserveSignals&lt;MySignal&gt;()
+	/// 		.Subscribe(signal => Console.WriteLine($"Received signal: {signal}"));
+	/// 	myAgent.SendSignal(new MySignal());
+	/// </code>
+	/// <br/>
+	/// Use the <seealso cref="ObserveSignals{TSignal}(out IObservable{TSignal})"/>
+	/// method instead when configuring the agent in a method chain.
 	/// </summary>
-	/// <seealso cref="SendSignalAsync{TSignal}"/>
-	/// <param name="signal">The signal to send.</param>
-	/// <param name="delay">(optional) The delay before sending the signal.</param>
-	/// <typeparam name="TSignal">The type of signal to send.</typeparam>
-	public void SendSignal<TSignal>(TSignal signal, TimeSpan? delay = null)
+	/// <returns>The observable that emits specified signal type.</returns>
+	public IObservable<TSignal> ObserveSignals<TSignal>()
 	{
-		if(delay is null)
-			Task.Run(() => SendSignalAsync(signal));
-		else
-			Task.Delay(delay.Value)
-				.ContinueWith(_ => SendSignalAsync(signal));
+		if(State is Disposed or Disposing)
+			throw new ObjectDisposedException("Disposed agents cannot observe signals.");
+		
+		return (SignalSubject<TSignal>)
+			_signalSubjectByType.GetOrAdd(
+				typeof(TSignal),
+				_ => new SignalSubject<TSignal>()
+			);
 	}
 
-	private readonly ConcurrentDictionary<Type, List<Module>> _signalProcessingOrderPerType = [];
+	/// <summary>
+	/// Retrieves an <see cref="IObservable{TSignal}"/>
+	/// that emits all future signals of type <typeparamref name="TSignal"/>
+	/// that are sent on the agent.
+	/// <br/>
+	/// Use this method when configuring the agent in a method chain. Example:
+	/// <code language="csharp">
+	/// 	var myAgent = new Agent()
+	/// 		.AddModule&lt;MyModule&gt;()
+	/// 		.ObserveSignals&lt;MySignal&gt;(out var mySignals)
+	/// 		.Initialize();
+	/// 	mySignals.Subscribe(signal => Console.WriteLine($"Received signal: {signal}"));
+	/// 	myAgent.SendSignal(new MySignal());
+	/// </code>
+	/// <br/>
+	/// When not configuring the agent it's recommended to instead
+	/// use the <seealso cref="ObserveSignals{TSignal}()"/> method.
+	/// </summary>
+	/// <param name="observable">A reference to assign the observable to.</param>
+	/// <returns>The agent for further configuration.</returns>
+	public Agent ObserveSignals<TSignal>(out IObservable<TSignal> observable)
+	{
+		observable = ObserveSignals<TSignal>();
+		return this;
+	}
 
 	/// <summary>
-	/// Sends a signal asynchronously to all modules on the agent that implement one of the following:
-	/// <list type="bullet">
-	/// 	<item><see cref="ISignalReceiver{TSignal}"/></item>
-	/// 	<item><see cref="ISignalInterceptor{TSignal}"/></item>
-	/// 	<item><see cref="IAsyncSignalReceiver{TSignal}"/></item>
-	/// 	<item><see cref="IAsyncSignalInterceptor{TSignal}"/></item>
-	/// </list>
+	/// Sends a <typeparamref name="TSignal"/> signal to all modules and observers on the agent.
 	/// <para>
-	/// It's perfectly fine to add and remove modules during signal processing,
-	/// but be aware that modules that are removed will not receive the signal
-	/// and modules that are added will only receive future signals, i.e. sent after they were added.
+	/// 	This method is non-blocking and returns immediately
+	/// 	because it defers the signal processing to a background task.
 	/// </para>
+	/// <para>
+	/// 	It's perfectly fine to add and remove modules during signal processing,
+	/// 	but be aware that modules that are removed will not receive the signal
+	/// 	and modules that are added will only receive future signals, i.e. sent after they were added.
+	/// </para>
+	/// </summary>
+	/// <param name="signal">The signal to send.</param>
+	/// <typeparam name="TSignal">The type of signal to send.</typeparam>
+	public void SendSignal<TSignal>(TSignal signal)
+	{
+		if(State is Disposed or Disposing)
+			throw new ObjectDisposedException("Disposed agents cannot send signals.");
+		Task.Run(() => SendSignalAsync(signal));
+	}
+
+
+	/// <summary>
+	/// Sends a signal asynchronously to all modules on the agent and observers.
 	/// </summary>
 	/// <seealso cref="SendSignal{TSignal}"/>
 	/// <param name="signal">The signal to send.</param>
@@ -1142,81 +1183,26 @@ public class Agent : IDisposable
 	{
 		if(State is Disposed or Disposing)
 			throw new ObjectDisposedException("Disposed agents cannot send signals.");
-		
-		var processors
-			= _signalProcessingOrderPerType.GetValueOrDefault(typeof(TSignal)) is { } order
-				? order
-					.OfType<IBaseSignalProcessor<TSignal>>()
-					.ToList()
-					.Tap(list =>
-					{
-						foreach(var module in _modules)
-							if(module is IBaseSignalProcessor<TSignal> processor
-							&& !list.Contains(processor))
-								list.Add(processor);
-					})
-				: _modules
-					.OfType<IBaseSignalProcessor<TSignal>>()
-					.ToList();
-		
-		if(processors.Count == 0)
-			return;
 
 		Debug.LogTrace(
-			"Sending signal on Agent {name} to {count} Modules: {signal}",
-			Name, processors.Count, signal
+			"Sending signal on Agent {name}: {signal}",
+			Name, signal
 		);
 
-		var index = -1;
-		foreach(var processor in processors)
-			try
-			{
-				++index;
-				Intercept<TSignal> intercept = default;
-				switch(processor)
-				{
-					case Module { Agent: null }:
-						continue; // skip modules that have been removed during signal processing
-					case ISignalReceiver<TSignal> receiver:
-						receiver.ReceiveSignal(signal);
-						continue;
-					case IAsyncSignalReceiver<TSignal> receiver:
-						await receiver.ReceiveSignalAsync(signal);
-						continue;
-					case ISignalInterceptor<TSignal> interceptor:
-						intercept = interceptor.InterceptSignal(signal);
-						break;
-					case IAsyncSignalInterceptor<TSignal> interceptor:
-						intercept = await interceptor.InterceptSignalAsync(signal);
-						break;
-					default:
-						throw new InvalidOperationException(
-							$"Signal processor {processor} not supported."
-						);
-				}
-				switch(intercept)
-				{
-					case { ShouldStopProcessing: true }:
-						return;
-					case { Signal: var newSignal }:
-						signal = newSignal ?? signal;
-						break;
-					default:
-						throw new InvalidOperationException(
-							$"Signal interceptor {processor} returned an invalid result."
-						);
-				}
-			}
-			catch(Exception ex)
-			{
-				Debug.LogError(
-					ex,
-					"Error processing signal {signal} by {processor}{at index}.",
-					signal,
-					processor,
-					index > 0 ? " at index " + index : ""
-				);
-			}
+		try
+		{
+			if(_signalSubjectByType.TryGetValue(typeof(TSignal), out var subject))
+				await ((SignalSubject<TSignal>)subject).OnNextAsync(signal);
+		}
+		catch(Exception ex)
+		{
+			Debug.LogError(
+				ex,
+				"Failed to send signal on Agent {name}: {signal}",
+				Name, signal
+			);
+			throw;
+		}
 	}
 
 	/// <summary>
@@ -1247,70 +1233,17 @@ public class Agent : IDisposable
 		if(State is Disposed or Disposing)
 			throw new ObjectDisposedException("Cannot set signal processing order on a disposed agent.");
 		
-		var moduleOrder = getModuleOrder(this);
-		foreach(var module in moduleOrder)
-		{
-			if(module is not IBaseSignalProcessor<TSignal>)
-				throw new ArgumentException($"Module {module} does not implement {typeof(IBaseSignalProcessor<TSignal>).ToVerboseString()}.");
-			if(module.Agent != this)
-				throw new ArgumentException($"Module {module} does not belong to {this}.");
-		}
-		var type = typeof(TSignal);
-		_signalProcessingOrderPerType.AddOrUpdate(type,
-			_ => [.. moduleOrder],
-			(_, before) => [.. moduleOrder, .. before.Except(moduleOrder)]
-		);
+		var moduleOrder = getModuleOrder(this) ?? throw new ArgumentNullException(nameof(getModuleOrder));
+
+		var subject = (SignalSubject<TSignal>)
+			_signalSubjectByType.GetOrAdd(
+				typeof(TSignal),
+				_ => new SignalSubject<TSignal>()
+			);
+		subject.SetSignalProcessingOrder(moduleOrder);
+		
 		return this;
 	}
-
-	/// <summary>
-	/// Retrieves an <see cref="IObservable{TSignal}"/>
-	/// that emits all future signals of type <typeparamref name="TSignal"/>
-	/// that are sent on the agent.
-	/// <br/>
-	/// Use this method when configuring the agent in a method chain. Example:
-	/// <code language="csharp">
-	/// 	var myAgent = new Agent()
-	/// 		.AddModule&lt;MyModule&gt;()
-	/// 		.ObserveSignals&lt;MySignal&gt;(out var mySignals)
-	/// 		.Initialize();
-	/// 	mySignals.Subscribe(signal => Console.WriteLine($"Received signal: {signal}"));
-	/// 	myAgent.SendSignal(new MySignal());
-	/// </code>
-	/// <br/>
-	/// When not configuring the agent it's recommended to instead
-	/// use the <seealso cref="ObserveSignals{TSignal}()"/> method.
-	/// </summary>
-	/// <param name="observable">A reference to assign the observable to.</param>
-	/// <returns>The agent for further configuration.</returns>
-	public Agent ObserveSignals<TSignal>(out IObservable<TSignal> observable)
-	{
-		observable = new SignalObservable<TSignal>(this);
-		return this;
-	}
-
-	/// <summary>
-	/// Returns an <see cref="IObservable{TSignal}"/>
-	/// that emits all future signals of type <typeparamref name="TSignal"/>
-	/// that are sent on the agent.
-	/// <br/>
-	/// Example:
-	/// <code language="csharp">
-	/// 	var myAgent = new Agent()
-	/// 		.AddModule&lt;MyModule&gt;()
-	/// 		.Initialize();
-	/// 	myAgent
-	/// 		.ObserveSignals&lt;MySignal&gt;()
-	/// 		.Subscribe(signal => Console.WriteLine($"Received signal: {signal}"));
-	/// 	myAgent.SendSignal(new MySignal());
-	/// </code>
-	/// <br/>
-	/// Use the <seealso cref="ObserveSignals{TSignal}(out IObservable{TSignal})"/>
-	/// method instead when configuring the agent in a method chain.
-	/// </summary>
-	/// <returns>The observable that emits specified signal type.</returns>
-	public IObservable<TSignal> ObserveSignals<TSignal>()
-		=> new SignalObservable<TSignal>(this);
 
 	#endregion
 }

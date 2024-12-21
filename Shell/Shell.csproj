@@ -8,7 +8,8 @@
 		<Nullable>enable</Nullable>
 		<LangVersion>preview</LangVersion>
 		<NoWarn>
-			IDE0130
+			IDE0130;
+			CA1513;
 		</NoWarn>
 	</PropertyGroup>
 

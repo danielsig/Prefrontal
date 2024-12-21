@@ -1,3 +1,3 @@
-namespace Prefrontal.Modules.LLM;
+namespace Prefrontal.Modules;
 
 public record DialogMessage(string Text, string? Author = "System");

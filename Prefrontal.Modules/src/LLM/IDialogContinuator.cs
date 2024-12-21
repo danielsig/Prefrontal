@@ -6,6 +6,6 @@ namespace Prefrontal.Modules.LLM;
 /// </summary>
 public interface IDialogContinuator
 {
-	Task<Dialog> ContinueAsync(Dialog context);
-	IAsyncEnumerable<DialogMessage> Continue(Dialog dialog);
+	Task<DialogContinuation> ContinueAsync(Dialog context);
+	IAsyncEnumerable<DialogContinuation> Continue(Dialog dialog);
 }
