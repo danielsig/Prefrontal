@@ -62,18 +62,52 @@ public abstract class Module
 	/// <em><b>Beware that this can be null if the module has been removed from the agent.</b></em>
 	/// To check if the module is still part of the agent, you can <see cref="implicit operator bool">implicitly cast the module to a boolean</see>.
 	/// </summary>
-	public Agent Agent { get; internal set; } = null!;
+	public Agent Agent
+	{
+		get => _agent
+			?? throw new InvalidOperationException(
+				_removed
+					? "The module has been removed from the agent."
+					: "The module has not yet been added to the agent."
+					+ " Please add an Agent parameter to the module's constructor"
+					+ " and pass it to the base constructor"
+					+ " to gain access to the agent inside the module's constructor."
+			);
+		internal set
+		{
+			_agent = value;
+			if(value is not null)
+			{
+				if(_onAddedToAgent.Count == 0)
+					return;
+				foreach(var action in _onAddedToAgent)
+					action();
+				_onAddedToAgent.Clear();
+			}
+			else
+			{
+				_removed = true;
+				if(_signalers.Count == 0)
+					return;
+				foreach(var signaler in _signalers)
+					signaler.RemoveModule(this);
+				_signalers.Clear();
+			}
+		}
+	}
 
 	/// <summary>
-	/// Default constructor for the module.
+	/// Default base constructor.
 	/// <br/>
-	/// Do not instantiate modules directly except in the module factory
+	/// There is no need to call this constructor in derived classes.
+	/// <br/>
+	/// Do not instantiate modules directly except in the createModule
 	/// callback passed to <see cref="Agent.AddModule{T}(Func{Agent, T})"/>.
 	/// </summary>
 	protected Module() { }
 
 	/// <summary>
-	/// Constructor for the module that takes the agent as a parameter.
+	/// Base constructor that takes the agent as a parameter.
 	/// Call this base constructor in derived classes when you need access to <see cref="Agent"/>
 	/// inside the module's constructor like so:
 	/// <code language="csharp">
@@ -84,26 +118,15 @@ public abstract class Module
 	/// }
 	/// </code>
 	/// <br/>
-	/// Do not instantiate modules directly except in the module factory
+	/// Do not instantiate modules directly except in the createModule
 	/// callback passed to <see cref="Agent.AddModule{T}(Func{Agent, T})"/>.
 	/// </summary>
-	protected Module(Agent agent)
-	{
-		Agent = agent;
-	}
-
-	/// <summary>
-	/// Used by the agent when the module is removed from it
-	/// in order to remove all signal subscriptions related to this module.
-	/// </summary>
-	internal readonly List<Type> _processableSignalTypes = [];
+	protected Module(Agent agent) => Agent = agent;
 
 	/// <summary>
 	/// The logger that this module can use to log messages.
 	/// </summary>
-	protected internal ILogger Debug
-		=> Agent?.Debug
-		?? throw new InvalidOperationException("The module has been removed from the agent.");
+	protected internal ILogger Debug => Agent.Debug;
 
 	/// <summary>
 	/// Module specific initialization logic goes in here.
@@ -148,31 +171,19 @@ public abstract class Module
 
 	/// <inheritdoc cref="Agent.SendSignal{TSignal, TResponse}(TSignal, bool)"/>
 	protected IEnumerable<TResponse> SendSignal<TSignal, TResponse>(TSignal signal, bool synchronous)
-	{
-		ThrowIfNoAgent();
-		return Agent.SendSignal<TSignal, TResponse>(signal, synchronous);
-	}
+		=> Agent.SendSignal<TSignal, TResponse>(signal, synchronous);
 
 	/// <inheritdoc cref="Agent.SendSignalAsync{TSignal, TResponse}(TSignal)"/>
 	protected IAsyncEnumerable<TResponse> SendSignalAsync<TSignal, TResponse>(TSignal signal)
-	{
-		ThrowIfNoAgent();
-		return Agent.SendSignalAsync<TSignal, TResponse>(signal);
-	}
+		=> Agent.SendSignalAsync<TSignal, TResponse>(signal);
 
 	/// <inheritdoc cref="Agent.SendSignal{TSignal}(TSignal)"/>
 	protected void SendSignal<TSignal>(TSignal signal)
-	{
-		ThrowIfNoAgent();
-		Agent.SendSignal(signal);
-	}
-
+		=> Agent.SendSignal(signal);
+	
 	/// <inheritdoc cref="Agent.SendSignalAsync{TSignal}(TSignal)"/>
 	protected Task SendSignalAsync<TSignal>(TSignal signal)
-	{
-		ThrowIfNoAgent();
-		return Agent.SendSignalAsync(signal);
-	}
+		=> Agent.SendSignalAsync(signal);
 
 	/// <summary>
 	/// Registers a receiver for signals of type <typeparamref name="TSignal"/>
@@ -286,6 +297,17 @@ public abstract class Module
 	/// </summary>
 	public override string ToString() => TypeName;
 
+	/// <summary>
+	/// True if the module is still part of the agent, false otherwise.
+	/// </summary>
+	public static implicit operator bool(Module module)
+		=> module is { _agent: not null };
+
+
+	#region private & internal
+
+	private Agent? _agent;
+	private bool _removed = false;
 	private string? _typeName;
 	internal string TypeName
 	{
@@ -293,7 +315,7 @@ public abstract class Module
 		{
 			if(_typeName is not null)
 				return _typeName;
-			
+
 			var type = GetType();
 			var name = type.Name;
 			if(name.EndsWith("Module"))
@@ -310,26 +332,37 @@ public abstract class Module
 	}
 
 	/// <summary>
-	/// True if the module is still part of the agent, false otherwise.
+	/// Used to defer certain operations that require access
+	/// to <see cref="Agent"/> until it has been assigned.
+	/// <br/>
+	/// These operations are typically signal subscriptions
+	/// created in the module's constructor.
 	/// </summary>
-	public static implicit operator bool(Module module)
-		=> module?.Agent is not null;
-	
-
-	#region private
-	private void ThrowIfNoAgent()
-	{
-		if(Agent is null)
-			throw new InvalidOperationException("The module does not belong to an agent.");
-	}
+	private readonly List<Action> _onAddedToAgent = [];
+	/// <summary>
+	/// Used to remove references to this module relevant signalers
+	/// when this module is removed from the agent.
+	/// <br/>
+	/// This is redundant when the agent is being disposed of
+	/// since the signalers themselves will also be disposed of.
+	/// </summary>
+	internal readonly HashSet<Signaler> _signalers = [];
 	private IDisposable SubscribeToSignals<TSignal>(
 		Func<Signaler<TSignal>, Signaler<TSignal>.Processor> createProcessor
 	)
 	{
-		// TODO: Support calling this method before the agent is initialized (e.g. in the module's constructor)
-		ThrowIfNoAgent();
-		_processableSignalTypes.Add(typeof(TSignal));
+		if(_agent is null)
+		{
+			if(_removed)
+				throw new InvalidOperationException("The module has been removed from the agent.");
+			
+			IDisposable? disposable = null;
+			_onAddedToAgent.Add(() => disposable = SubscribeToSignals(createProcessor));
+			return new DisposeCallback(() => disposable?.Dispose());
+		}
+
 		var signaler = Agent.GetSignaler<TSignal>();
+		_signalers.Add(signaler);
 		return signaler.Subscribe(createProcessor(signaler));
 	}
 	#endregion

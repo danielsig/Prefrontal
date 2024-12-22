@@ -583,16 +583,7 @@ public class Agent : IDisposable
 		if(removed.Count > 0)
 		{
 			foreach(var module in removed)
-			{
-				// remove module from signalers
-				foreach(var signalType in module._processableSignalTypes)
-					if(_signalersByType.TryGetValue(signalType, out var signaler))
-						signaler.RemoveModule(module);
-				module._processableSignalTypes.Clear();
-
-				// Module should not be able to access the agent after removal
 				module.Agent = null!;
-			}
 			_modules.RemoveAll(removed.Contains);
 		}
 		return removed.Count > 0;
@@ -850,7 +841,8 @@ public class Agent : IDisposable
 			// dispose of the modules in reverse order
 			var modulesReversed = new List<Module>(_modules.Reverse<Module>());
 			foreach(var module in modulesReversed)
-			{
+				module._signalers.Clear(); // avoid redundant cleanup
+			foreach(var module in modulesReversed)
 				if(module is IDisposable disposable)
 					try
 					{
@@ -861,10 +853,10 @@ public class Agent : IDisposable
 						if(error is not InvalidOperationException) // ignore cancellation
 							errors.Add(error, module.ToString());
 					}
+			foreach(var module in modulesReversed)
 				module.Agent = null!;
-			}
-			_modules.Clear();
 			_signalersByType.Clear();
+			_modules.Clear();
 			if(!errors.HasErrors)
 				Debug.LogInformation("{Name} disposed successfully", Name);
 		}

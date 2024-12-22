@@ -152,4 +152,19 @@ public static class XEnumerable
 		while(enumerator.MoveNext());
 		return list;
 	}
+
+	public static IEnumerable<T> WhereNotNull<T>(this IEnumerable<T?> enumerable)
+		where T : class
+	{
+		foreach(var item in enumerable)
+			if(item is not null)
+				yield return item;
+	}
+	public static IEnumerable<T> WhereNotNull<T>(this IEnumerable<T?> enumerable)
+		where T : struct
+	{
+		foreach(var item in enumerable)
+			if(item is not null)
+				yield return item.Value;
+	}
 }

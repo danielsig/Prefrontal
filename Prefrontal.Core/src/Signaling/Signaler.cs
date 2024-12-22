@@ -37,9 +37,16 @@ internal sealed class Signaler<TSignal> : Signaler, IObservable<TSignal>
 		lock(_gate)
 		{
 			if(_preferredOrder != modules) // common case optimization
-				_preferredOrder = [.. modules.Distinct()];
+			{
+				_preferredOrder = [..modules.WhereNotNull().Distinct()];
+				foreach(var module in _preferredOrder)
+					module._signalers.Add(this);
+			}
 			_processors = _preferredOrder
-				.SelectMany(m => m is not null ? _processors.Where(o => o.Module == m) : [])
+				.SelectMany(m => m is not null
+					? _processors.Where(o => o.Module == m)
+					: []
+				)
 				.Concat(_processors.Where(o
 					=> o.Module is null
 					|| !_preferredOrder.Contains(o.Module)
