@@ -59,8 +59,18 @@ public abstract class Module
 {
 	/// <summary>
 	/// The agent that this module belongs to.
-	/// <em><b>Beware that this can be null if the module has been removed from the agent.</b></em>
-	/// To check if the module is still part of the agent, you can <see cref="implicit operator bool">implicitly cast the module to a boolean</see>.
+	/// <para>
+	/// 	<em><b>
+	/// 		Beware that accessing this will throw an exception
+	/// 		if the module has been removed from the agent
+	/// 		or if accessed from within the module's constructor
+	/// 		that does not pass the agent as a parameter to
+	/// 		the <see cref="Module(Agent)">base constructor</see>.
+	/// 	</b></em>
+	/// 	In the rare circumstance when it could be needed
+	/// 	<see cref="IsPartOfAgent"/> can be used to check
+	/// 	if the module has not been removed from the agent.
+	/// </para>
 	/// </summary>
 	public Agent Agent
 	{
@@ -97,6 +107,27 @@ public abstract class Module
 	}
 
 	/// <summary>
+	/// <see langword="true"/> if the module belongs to an agent,
+	/// <see langword="false"/> otherwise.
+	/// <br/>
+	/// Example usage:
+	/// <code language="csharp">
+	/// public class SomethingGetterModule : Module
+	/// {
+	/// 	[returns: NotNullIfNotNull(nameof(defaultSomething))]
+	/// 	public Something? GetSomethingOrDefault(Something? defaultSomething = null)
+	/// 	{
+	/// 		if(!IsPartOfAgent)
+	/// 			return defaultSomething;
+	/// 		return Agent.GetModule&lt;SomethingProviderModule&gt;()?.Something
+	/// 			?? defaultSomething;
+	/// 	}
+	/// }
+	/// </code>
+	/// </summary>
+	public bool IsPartOfAgent => _agent is not null;
+
+	/// <summary>
 	/// Default base constructor.
 	/// <br/>
 	/// There is no need to call this constructor in derived classes.
@@ -121,15 +152,21 @@ public abstract class Module
 	/// Do not instantiate modules directly except in the createModule
 	/// callback passed to <see cref="Agent.AddModule{T}(Func{Agent, T})"/>.
 	/// </summary>
-	protected Module(Agent agent) => Agent = agent;
+	protected Module(Agent agent) => _agent = agent;
 
 	/// <summary>
 	/// The logger that this module can use to log messages.
+	/// <br/>
+	/// The logger is only available after <see cref="Agent"/> has been assigned,
+	/// meaning you cannot log messages in the module's constructor
+	/// unless you include the agent as a parameter in the constructor
+	/// and pass it to the <see cref="Module(Agent)">base constructor</see>.
 	/// </summary>
 	protected internal ILogger Debug => Agent.Debug;
 
 	/// <summary>
-	/// Module specific initialization logic goes in here.
+	/// Override this method in a derived class
+	/// to add initialization logic to the module.
 	/// <list type="bullet">
 	/// 	<item>
 	/// 		<em><b>Do not call this method directly.</b></em>
@@ -177,7 +214,7 @@ public abstract class Module
 	protected IAsyncEnumerable<TResponse> SendSignalAsync<TSignal, TResponse>(TSignal signal)
 		=> Agent.SendSignalAsync<TSignal, TResponse>(signal);
 
-	/// <inheritdoc cref="Agent.SendSignal{TSignal}(TSignal)"/>
+	/// <inheritdoc cref="Agent.SendSignal{TSignal, TResponse}(TSignal, bool)"/>
 	protected void SendSignal<TSignal>(TSignal signal)
 		=> Agent.SendSignal(signal);
 	
@@ -192,8 +229,9 @@ public abstract class Module
 	/// 	The receiver and sender are only matched
 	/// 	by the <typeparamref name="TSignal"/> type
 	/// 	and not by the <typeparamref name="TResponse"/> type.
-	/// 	If the return value of a receiver cannot be cast to the
-	/// 	response type that the sender expects, the response will be empty.
+	/// 	If the <typeparamref name="TResponse"/>s returned by the receiver
+	/// 	cannot be cast to the response type expected by the sender,
+	/// 	the sender will receive no response.
 	/// </para>
 	/// <para>
 	/// 	There is no need to dispose of the returned <see cref="IDisposable"/>
@@ -216,8 +254,8 @@ public abstract class Module
 	/// Registers a receiver for signals of type <typeparamref name="TSignal"/>.
 	/// <para>
 	/// 	The receiver will be called even if the sender expects a response.
-	/// 	However, the response will be empty
-	/// 	if there is no other receiver that returns a response.
+	/// 	However, the sender will receive no response
+	/// 	unless another receiver returns a response of that type.
 	/// </para>
 	/// <para>
 	/// 	There is no need to dispose of the returned <see cref="IDisposable"/>
@@ -238,23 +276,39 @@ public abstract class Module
 
 
 	/// <summary>
-	/// Registers a signal interceptor for signals of type <typeparamref name="TSignal"/>
-	/// with a response of type <typeparamref name="TResponse"/>.
+	/// Registers a signal interceptor
+	/// that intercepts signals of type <typeparamref name="TSignal"/>
+	/// with responses cast to <typeparamref name="TResponse"/>.
 	/// <para>
 	/// 	Interceptors differ from receivers in that they can:
 	/// 	<list type="number">
 	/// 		<item>
-	/// 			Change the signal before passing it to subsequent processors
-	/// 			by calling <see cref="SignalContext{TSignal, TResponse}.Next(TSignal)">context.Next(new signal)</see>.
+	/// 			Change the signal before passing it to subsequent processors by calling
+	/// 			<see cref="SignalContext{TSignal, TResponse}.Next(TSignal)">
+	/// 				context.Next(<typeparamref name="TSignal"/>)
+	/// 			</see>
+	/// 			with the new signal.
 	/// 		</item>
 	/// 		<item>
-	/// 			Stop subsequent signal processing by returning
-	/// 			without calling <see cref="SignalContext{TSignal, TResponse}.Next">context.Next()</see>.
+	/// 			Stop subsequent signal processing by returning without calling either
+	/// 			<see cref="SignalContext{TSignal, TResponse}.Next">
+	/// 				context.Next()
+	/// 			</see>
+	/// 			nor
+	/// 			<see cref="SignalContext{TSignal, TResponse}.Next(TSignal)">
+	/// 				context.Next(<typeparamref name="TSignal"/>)
+	/// 			</see>.
 	/// 		</item>
 	/// 		<item>
-	/// 			Modify the responses returned from
-	/// 			<see cref="SignalContext{TSignal, TResponse}.Next">subsequent signal processors</see>
-	/// 			before returning it to the sender.
+	/// 			Return a different <typeparamref name="TResponse"/>
+	/// 			than the ones returned by
+	/// 			<see cref="SignalContext{TSignal, TResponse}.Next">
+	/// 				context.Next()
+	/// 			</see>
+	/// 			and
+	/// 			<see cref="SignalContext{TSignal, TResponse}.Next(TSignal)">
+	/// 				context.Next(<typeparamref name="TSignal"/>)
+	/// 			</see>.
 	/// 		</item>
 	/// 	</list>
 	/// </para>
@@ -262,8 +316,9 @@ public abstract class Module
 	/// 	The interceptor and sender are only matched
 	/// 	by the <typeparamref name="TSignal"/> type
 	/// 	and not by the <typeparamref name="TResponse"/> type.
-	/// 	If the return value of an interceptor cannot be cast to the
-	/// 	response type that the sender expects, the response will be empty.
+	/// 	If the <typeparamref name="TResponse"/>s returned by the interceptor
+	/// 	cannot be cast to the response type expected by the sender,
+	/// 	the sender will receive no response.
 	/// </para>
 	/// <para>
 	/// 	There is no need to dispose of the returned <see cref="IDisposable"/>
@@ -282,7 +337,62 @@ public abstract class Module
 			new Signaler<TSignal>.AsyncInterceptorProcessor<TResponse>(subject, interceptor, this)
 		);
 
-	/// <inheritdoc cref="InterceptSignalsAsync{TSignal, TResponse}(Func{SignalContext{TSignal, TResponse}, IAsyncEnumerable{TResponse}})"/>
+	/// <summary>
+	/// Registers a signal interceptor
+	/// that intercepts signals of type <typeparamref name="TSignal"/>
+	/// with responses wrapped as <see cref="object">objects</see>
+	/// <para>
+	/// 	Interceptors differ from receivers in that they can:
+	/// 	<list type="number">
+	/// 		<item>
+	/// 			Change the signal before passing it to subsequent processors by calling
+	/// 			<see cref="SignalContext{TSignal, TResponse}.Next(TSignal)">
+	/// 				context.Next(<typeparamref name="TSignal"/>)
+	/// 			</see>
+	/// 			with the new signal.
+	/// 		</item>
+	/// 		<item>
+	/// 			Stop subsequent signal processing by returning without calling either
+	/// 			<see cref="SignalContext{TSignal, TResponse}.Next">
+	/// 				context.Next()
+	/// 			</see>
+	/// 			nor
+	/// 			<see cref="SignalContext{TSignal, TResponse}.Next(TSignal)">
+	/// 				context.Next(<typeparamref name="TSignal"/>)
+	/// 			</see>.
+	/// 		</item>
+	/// 		<item>
+	/// 			Return different response <see cref="object">objects</see>
+	/// 			than the ones returned by
+	/// 			<see cref="SignalContext{TSignal, TResponse}.Next">
+	/// 				context.Next()
+	/// 			</see>
+	/// 			and
+	/// 			<see cref="SignalContext{TSignal, TResponse}.Next(TSignal)">
+	/// 				context.Next(<typeparamref name="TSignal"/>)
+	/// 			</see>.
+	/// 		</item>
+	/// 	</list>
+	/// </para>
+	/// <para>
+	/// 	The interceptor and sender are only matched
+	/// 	by the <typeparamref name="TSignal"/> type.
+	/// 	If the <see cref="object">objects</see> returned by the interceptor
+	/// 	cannot be cast to the response type expected by the sender,
+	/// 	the sender will receive no response.
+	/// </para>
+	/// <para>
+	/// 	There is no need to dispose of the returned <see cref="IDisposable"/>
+	/// 	unless you want to stop intercepting signals. This is because the agent
+	/// 	will automatically unsubscribe the interceptor when the module is removed.
+	/// </para>
+	/// </summary>
+	/// <param name="interceptor">
+	/// 	A function that takes a <see cref="SignalContext{TSignal, TResponse}"/>
+	/// 	and returns an <see cref="IAsyncEnumerable{TResponse}"/>.
+	/// 	Calling <c>context.Next()</c> will continue the signal processing.
+	/// </param>
+	/// <seealso cref="SignalContext{TSignal, TResponse}"/>
 	protected IDisposable InterceptSignalsAsync<TSignal>(Func<SignalContext<TSignal, object>, IAsyncEnumerable<object>> interceptor)
 		=> SubscribeToSignals<TSignal>(subject =>
 			new Signaler<TSignal>.AsyncInterceptorProcessor<object>(subject, interceptor, this)
@@ -296,12 +406,6 @@ public abstract class Module
 	/// 	Generic type arguments are also included in the output, if any.
 	/// </summary>
 	public override string ToString() => TypeName;
-
-	/// <summary>
-	/// True if the module is still part of the agent, false otherwise.
-	/// </summary>
-	public static implicit operator bool(Module module)
-		=> module is { _agent: not null };
 
 
 	#region private & internal

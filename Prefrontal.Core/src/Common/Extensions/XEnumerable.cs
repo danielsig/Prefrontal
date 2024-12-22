@@ -141,6 +141,18 @@ public static class XEnumerable
 		params T[] exceptions
 	) => Enumerable.Except(enumerable, exceptions);
 
+	/// <summary>
+	/// Just like <see cref="Enumerable.ToList{TSource}(IEnumerable{TSource})"/>,
+	/// but returns <see langword="null"/> if the <paramref name="enumerable"/>
+	/// is <see langword="null"/> or empty.
+	/// </summary>
+	/// <typeparam name="T">The type of the elements of <paramref name="enumerable"/>.</typeparam>
+	/// <param name="enumerable">The enumerable to convert.</param>
+	/// <returns>
+	/// 	A list of the elements of <paramref name="enumerable"/>
+	/// 	or <see langword="null"/> if the <paramref name="enumerable"/>
+	/// 	is <see langword="null"/> or empty.
+	/// </returns>
 	public static List<T>? ToListIfNotEmpty<T>(this IEnumerable<T> enumerable)
 	{
 		if(enumerable?.GetEnumerator() is not { } enumerator
@@ -153,6 +165,9 @@ public static class XEnumerable
 		return list;
 	}
 
+	/// <summary>
+	/// Returns non-<see langword="null"/> elements from the <paramref name="enumerable"/>.
+	/// </summary>
 	public static IEnumerable<T> WhereNotNull<T>(this IEnumerable<T?> enumerable)
 		where T : class
 	{
@@ -160,6 +175,10 @@ public static class XEnumerable
 			if(item is not null)
 				yield return item;
 	}
+
+	/// <summary>
+	/// Returns non-<see langword="null"/> elements from the <paramref name="enumerable"/>.
+	/// </summary>
 	public static IEnumerable<T> WhereNotNull<T>(this IEnumerable<T?> enumerable)
 		where T : struct
 	{

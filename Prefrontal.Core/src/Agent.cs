@@ -420,6 +420,10 @@ public class Agent : IDisposable
 						type.ToVerboseString()
 					}."
 				);
+			if(arguments[i] is Module)
+				_requiredBy
+					.GetOrAdd(arguments[i].GetType())
+					.Add(type);
 		}
 
 		// create the module using the constructor and the arguments
@@ -428,6 +432,7 @@ public class Agent : IDisposable
 	}
 
 	private static readonly Dictionary<Type, ModuleTypeData> _moduleTypeDataCache = [];
+	private static readonly Dictionary<Type, List<Type>> _requiredBy = [];
 	private static ModuleTypeData GetModuleTypeData(Type type)
 	{
 		if(_moduleTypeDataCache.TryGetValue(type, out var data))
@@ -475,6 +480,9 @@ public class Agent : IDisposable
 			)
 			.ToList();
 		
+		foreach(var r in requiredModules)
+			_requiredBy.GetOrAdd(r.ModuleType).Add(type);
+
 		return _moduleTypeDataCache[type]
 			= new ModuleTypeData(
 				isSingleton,
@@ -540,13 +548,45 @@ public class Agent : IDisposable
 				"Cannot remove modules from an agent while it's initializing."
 			);
 
-		if(State is Disposed or Disposing
-		|| modules is null
-		|| modules
-			.Where(m => m.Agent == this || _modules.Contains(m))
-			.ToListIfNotEmpty() is not { Count: > 0 } removed
-		) return false;
+		if(
+			State is Disposed or Disposing
+			|| modules is null
+			|| modules
+				?.Where(m => m.Agent == this || _modules.Contains(m))
+				.ToListIfNotEmpty()
+				is not { } toBeRemoved
+		)
+		{
+			return false;
+		}
 
+		// Sort modules by dependency order
+		// but cancel if any module is required by another module that isn't being removed.
+		Dictionary<Module, List<Module>>? dependentsPerModule = null;
+		foreach(var module in toBeRemoved)
+			if(GetModulesThatRequire(module.GetType()).ToListIfNotEmpty() is { } dependents)
+			{
+				// if any module that depends on this one
+				// is not in the list of modules to be removed...
+				if(dependents.Any(d => !toBeRemoved.Contains(d)))
+				{
+					// ...then we cannot remove any of the modules
+					Debug.LogWarning(
+						"Cannot remove Module {module} from Agent {Name}"
+						+ "because it is required by {dependents}.",
+						module,
+						this,
+						dependents.JoinVerbose()
+					);
+					return false;
+				}
+				(dependentsPerModule ??= [])[module] = dependents;
+			}
+		// if any dependents were found, sort the modules so that dependents come first
+		if(dependentsPerModule is not null)
+			toBeRemoved.Sort((a, b) => dependentsPerModule[a].Contains(b) ? 1 : -1);
+
+		// setup error aggregation
 		using var errors = new ExceptionAggregator<string>(errorList =>
 			$@"Failed to dispose of {
 				errorList.Count
@@ -558,35 +598,52 @@ public class Agent : IDisposable
 					.JoinVerbose()
 			}"
 		);
-		foreach(var module in removed)
+
+		// dispose of the modules
+		for(int i = 0; i < toBeRemoved.Count; i++)
+		{
+			var module = toBeRemoved[i];
 			try
 			{
-				// TODO: Throw InvalidOperationException if module required by another module
 				if(module is IDisposable disposable)
 					disposable.Dispose();
 			}
-			catch(InvalidOperationException ex)
+			catch(Exception error) // if removal fails
 			{
-				// handle when the module cancels the removal
-				Debug.LogWarning(
-					"Module {module} cancelled removal from agent {agent}: {reason}",
-					module,
-					this,
-					ex.Message
-				);
-				removed.Remove(module);
+				if(error is InvalidOperationException ex)
+					// We treat InvalidOperationException as a warning
+					// to allow modules to cancel their own removal.
+					Debug.LogWarning(
+						"Module {module} cancelled removal from agent {agent}: {reason}",
+						module,
+						this,
+						ex.Message
+					);
+				else
+					// We treat all other exceptions as errors to be rethrown.
+					errors.Add(error, module.ToString());
+
+				// cancel the removal of this module
+				toBeRemoved.RemoveAt(i--);
+
+				// cancel the removal of subsequent modules that this one depends on
+				if(dependentsPerModule is not null)
+					foreach(var (requirement, requiredBy) in dependentsPerModule)
+						if(requiredBy.Contains(module)
+						&& toBeRemoved.IndexOf(requirement, i) is int index && index >= i)
+							toBeRemoved.RemoveAt(index);
 			}
-			catch(Exception error)
-			{
-				errors.Add(error, module.ToString());
-			}
-		if(removed.Count > 0)
-		{
-			foreach(var module in removed)
-				module.Agent = null!;
-			_modules.RemoveAll(removed.Contains);
 		}
-		return removed.Count > 0;
+		
+		// remove the modules from the agent that were successfully disposed of
+		if(toBeRemoved.Count > 0)
+		{
+			foreach(var module in toBeRemoved)
+				module.Agent = null!;
+			_modules.RemoveAll(toBeRemoved.Contains);
+			return true;
+		}
+		return false;
 	}
 
 	#endregion
@@ -652,6 +709,51 @@ public class Agent : IDisposable
 		where T : Module
 		=> _modules.OfType<T>();
 	
+	/// <summary>
+	/// Gets all modules on the agent that requires a module of type <typeparamref name="T"/>.
+	/// <br/>See <see cref="RequiredModuleAttribute"/> for more information.
+	/// </summary>
+	public IEnumerable<Module> GetModulesThatRequire<T>()
+		where T : Module
+		=> GetModulesThatRequire(typeof(T));
+
+	/// <summary>
+	/// Gets all modules on the agent that requires a module of the specified <paramref name="moduleType"/>.
+	/// <br/>See <see cref="RequiredModuleAttribute"/> for more information.
+	/// </summary>
+	public IEnumerable<Module> GetModulesThatRequire(Type moduleType)
+		=> _requiredBy
+			.GetValueOrDefault(moduleType)
+			?.SelectMany(r => _modules.Where(m => m.GetType() == r))
+			?? [];
+
+	/// <summary>
+	/// Gets all modules on the agent that requires a module of type <typeparamref name="T"/>
+	/// and all modules that require those modules, etc.
+	/// <br/>See <see cref="RequiredModuleAttribute"/> for more information.
+	/// </summary>
+	public IEnumerable<Module> GetModulesRecursivelyThatRequire<T>()
+		where T : Module
+		=> GetModulesRecursivelyThatRequire(typeof(T), []);
+
+	/// <summary>
+	/// Gets all modules on the agent that requires a module of the specified <paramref name="moduleType"/>
+	/// and all modules that require those modules, etc.
+	/// <br/>See <see cref="RequiredModuleAttribute"/> for more information.
+	/// </summary>
+	public IEnumerable<Module> GetModulesRecursivelyThatRequire(Type moduleType)
+		=> GetModulesRecursivelyThatRequire(moduleType, []);
+	
+	private HashSet<Module> GetModulesRecursivelyThatRequire(Type moduleType, HashSet<Module> results)
+	{
+		if(_requiredBy.TryGetValue(moduleType, out var dependents))
+			foreach(var dependentType in dependents)
+				if(_modules.Find(m => m.GetType() == dependentType) is Module dependent
+				&& results.Add(dependent))
+					GetModulesRecursivelyThatRequire(dependentType, results);
+		return results;
+	}
+
 	#endregion
 
 	#region GetOrAddModule
@@ -960,6 +1062,11 @@ public class Agent : IDisposable
 	/// <param name="signal">The signal to send.</param>
 	/// <param name="synchronous">Whether to wait for all the responses before returning.</param>
 	/// <typeparam name="TSignal">The type of signal to send.</typeparam>
+	/// <typeparam name="TResponse">The type of response to expect.</typeparam>
+	/// <returns>
+	/// 	All responses to the signal of type <typeparamref name="TResponse"/>.
+	/// 	<see cref="Enumerable"/> offers a variety of methods to work with the responses.
+	/// </returns>
 	public IEnumerable<TResponse> SendSignal<TSignal, TResponse>(TSignal signal, bool synchronous = false)
 	{
 		if(State is Disposed)
@@ -985,7 +1092,10 @@ public class Agent : IDisposable
 	/// <seealso cref="SendSignal{TSignal}"/>
 	/// <param name="signal">The signal to send.</param>
 	/// <typeparam name="TSignal">The type of signal to send.</typeparam>
-	/// <returns>A task that represents the asynchronous operation.</returns>
+	/// <returns>
+	/// 	All responses to the signal of type <typeparamref name="TResponse"/>.
+	/// 	<see cref="XAsyncEnumerable"/> offers a variety of methods to work with the responses.
+	/// </returns>
 	public IAsyncEnumerable<TResponse> SendSignalAsync<TSignal, TResponse>(TSignal signal)
 	{
 		if(State is Disposed)
@@ -1003,10 +1113,13 @@ public class Agent : IDisposable
 		return AsyncEnumerable.Empty<TResponse>();
 	}
 
-	/// <inheritdoc cref="SendSignal{TSignal, TResponse}(TSignal)"/>
+	/// <inheritdoc cref="SendSignal{TSignal, TResponse}(TSignal, bool)"/>
 	public void SendSignal<TSignal>(TSignal signal)
 		=> SendSignal<TSignal, object>(signal);
 
+	/// <returns>
+	/// 	A task that completes when all modules have processed the signal.
+	/// </returns>
 	/// <inheritdoc cref="SendSignalAsync{TSignal, TResponse}(TSignal)"/>
 	public Task SendSignalAsync<TSignal>(TSignal signal)
 	{

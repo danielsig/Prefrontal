@@ -1,3 +1,5 @@
+using System.Net.Http.Json;
+
 namespace Prefrontal.Modules.LLM;
 
 // TODO: Make this class work by expecting an URL to an OpenAI compatible API endpoint, and a token to authenticate with.
@@ -7,7 +9,7 @@ namespace Prefrontal.Modules.LLM;
 public class RemoteLLMModule
 (
 	HttpClient httpClient
-) : Module, IDialogContinuator
+) : Module
 {
 	private readonly HttpClient _httpClient = httpClient;
 	public string? Endpoint { get; private set; }
@@ -19,7 +21,7 @@ public class RemoteLLMModule
 		_apiKey = apiKey;
 	}
 
-	protected override async Task InitializeAsync()
+	protected override void Initialize()
 	{
 		if(string.IsNullOrWhiteSpace(Endpoint))
 			throw new InvalidOperationException("Endpoint for the HTTP Language Model is not set.");
@@ -28,15 +30,13 @@ public class RemoteLLMModule
 		
 		_httpClient.DefaultRequestHeaders.Add("Authorization", "Bearer " + _apiKey);
 		_httpClient.DefaultRequestHeaders.Add("Content-Type", "application/json");
-	}
 
-	public Task<DialogContinuation> ContinueAsync(Dialog context)
-	{
-		throw new NotImplementedException();
-	}
-
-	public IAsyncEnumerable<DialogContinuation> Continue(Dialog dialog)
-	{
-		throw new NotImplementedException();
+		ReceiveSignalsAsync(async (Dialog dialog) =>
+		{
+			var response = await _httpClient.PostAsJsonAsync(Endpoint, dialog);
+			response.EnsureSuccessStatusCode();
+			return await response.Content.ReadFromJsonAsync<DialogContinuation>()
+				?? throw new InvalidOperationException("The response from the HTTP Language Model was empty.");
+		});
 	}
 }

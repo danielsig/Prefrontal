@@ -22,3 +22,12 @@ code
 {
 	tab-size: 2em;
 }
+
+.typelist.inheritedMembers
+{
+	display: none;
+}
+.typelist.extensionMethods
+{
+	display: none;
+}
