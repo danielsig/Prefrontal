@@ -86,6 +86,8 @@
 			"*.code-workspace",
 		],
 		"cSpell.words": [
+			"Browsable",
+			"Ironman's"
 		],
 	},
 	"extensions": {

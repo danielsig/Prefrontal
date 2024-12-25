@@ -189,6 +189,7 @@ public abstract class Module
 	/// 	</item>
 	/// </list>
 	/// </summary>
+	[EditorBrowsable(EditorBrowsableState.Never)]
 	protected internal virtual void Initialize()
 	{
 		
@@ -200,11 +201,47 @@ public abstract class Module
 	/// 	if both are overridden in the same module.
 	/// </remarks>
 	/// <returns>A task that represents the asynchronous initialization of this module.</returns>
+	[EditorBrowsable(EditorBrowsableState.Never)]
 	protected internal virtual Task InitializeAsync()
 	{
 		Initialize();
 		return Task.CompletedTask;
 	}
+
+	/// <summary>
+	/// Override this method in a derived class
+	/// to run the module's main logic.
+	/// <list type="bullet">
+	/// 	<item>
+	/// 		<em><b>Do not call this method directly.</b></em>
+	/// 	</item>
+	/// 	<item>
+	/// 		Call <see cref="Agent.RunAsync">Agent.RunAsync()</see>
+	/// 		to run all the modules in parallel.
+	/// 	</item>
+	/// 	<item>
+	/// 		Returning from this method will be considered
+	/// 		as the module having completed its primary task.
+	/// 		To keep the module running indefinitely,
+	/// 		override this method and run an infinite loop.
+	/// 	</item>
+	/// </list>
+	/// </summary>
+	/// <param name="cancellationToken">
+	/// 	A <see cref="CancellationToken"/> whose cancellation signals
+	/// 	that the module should stop running.
+	///	</param>
+	protected internal virtual Task RunAsync(CancellationToken cancellationToken)
+		=> Task.CompletedTask;
+
+	protected T? GetModuleOrDefault<T>() where T : Module
+		=> this is T
+			? Agent.GetModules<T>()
+				.SkipWhile(m => m != this)
+				.Skip(1)
+				.FirstOrDefault()
+			: Agent.GetModule<T>();
+
 
 	/// <inheritdoc cref="Agent.SendSignal{TSignal, TResponse}(TSignal, bool)"/>
 	protected IEnumerable<TResponse> SendSignal<TSignal, TResponse>(TSignal signal, bool synchronous)

@@ -1,4 +1,5 @@
 ﻿using System.Collections.Concurrent;
+using Microsoft.Extensions.Logging.Abstractions;
 using Prefrontal.Reactive;
 using static Prefrontal.AgentState;
 
@@ -124,6 +125,26 @@ public class Agent : IDisposable
 		_state = new(Debug);
 	}
 
+	/// <summary>
+	/// Creates a new agent and uses the specified
+	/// <paramref name="configureServices"/> action
+	/// to construct a <see cref="ServiceProvider"/>.
+	/// <para>
+	/// 	This constructor also adds a
+	/// 	<see cref="ServiceProviderDisposesWithAgentModule"/>
+	/// 	to the agent to properly dispose of the <see cref="ServiceProvider"/>
+	/// 	when the agent gets disposed.
+	/// </para>
+	/// </summary>
+	public Agent(Action<ServiceCollection> configureServices)
+	: this(
+		new ServiceCollection()
+			.Tap(configureServices)
+			.BuildServiceProvider()
+	)
+	{
+		AddModule<ServiceProviderDisposesWithAgentModule>();
+	}
 	#region Fields & Properties
 
 	/// <summary>
@@ -136,12 +157,8 @@ public class Agent : IDisposable
 	/// </summary>
 	protected internal ILogger Debug;
 	private static readonly ILogger DefaultLogger
-		= new ServiceCollection()
-			.AddLogging(builder => builder.AddConsole())
-			.BuildServiceProvider()
-			.UseFor(s => s.GetService<ILoggerProvider>()?.CreateLogger("Agent"))
-			?? throw new InvalidOperationException("No logger found.");
-    
+		= NullLoggerFactory.Instance.CreateLogger("Agent");
+
 	/// <summary>
 	/// The name of the agent.
 	/// </summary>
@@ -651,63 +668,83 @@ public class Agent : IDisposable
 	#region GetModule
 
 	/// <summary>
-	/// Gets the first module of the specified <typeparamref name="T"/> type
-	/// or <see langword="null"/> if the agent does not contain a module of that type.
+	/// Gets the last module that can be assigned
+	/// to a variable of the specified <typeparamref name="T"/> type
+	/// or <see langword="null"/> if the agent does not contain such a module.
+	/// Modules added later take precedence over modules added before them
+	/// which is why the last module that meets the criteria is returned.
 	/// </summary>
 	/// <returns>
-	/// 	The module of the specified type
+	/// 	The most significant module assignable to the given type
 	/// 	or <see langword="null"/> if not found.
 	/// </returns>
 	public T? GetModuleOrDefault<T>()
 		where T : Module
-		=> _modules.FirstOrDefault(m => m is T) as T;
-	
+		=> _modules.FindLast(m => m is T) as T;
+
 	/// <summary>
-	/// Gets the first module of the specified <paramref name="moduleType"/>
-	/// or <see langword="null"/> if the agent does not contain a module of that type.
+	/// Gets the last module that can be assigned
+	/// to a variable of the specified <paramref name="moduleType"/>
+	/// or <see langword="null"/> if the agent does not contain such a module.
+	/// Modules added later take precedence over modules added before them
+	/// which is why the last module that meets the criteria is returned.
 	/// </summary>
 	/// <returns>
-	/// 	The module of the specified type
+	/// 	The most significant module assignable to the given type
 	/// 	or <see langword="null"/> if not found.
 	/// </returns>
 	public Module? GetModuleOrDefault(Type moduleType)
-		=> _modules.FirstOrDefault(m => m.GetType() == moduleType);
+		=> _modules.FindLast(m => m.GetType().IsAssignableTo(moduleType));
 
 	/// <summary>
-	/// Gets the first module of the specified <typeparamref name="T"/> type
+	/// Gets the last module that can be assigned
+	/// to a variable of the specified <typeparamref name="T"/> type
 	/// or throws an <see cref="InvalidOperationException"/>
-	/// if the agent does not contain a module of that type.
+	/// if the agent does not contain such a module.
+	/// Modules added later take precedence over modules added before them
+	/// which is why the last module that meets the criteria is returned.
 	/// </summary>
-	/// <returns>The module of the specified type.</returns>
+	/// <returns>
+	/// 	The most significant module assignable to the given type.
+	/// </returns>
 	public T GetModule<T>()
 		where T : Module
 		=> GetModuleOrDefault<T>()
-		?? throw new InvalidOperationException(
+		?? throw new Exception(
 			$"Module of type {typeof(T).ToVerboseString()} not found."
 		);
-	
+
 	/// <summary>
-	/// Gets the first module of the specified <paramref name="moduleType"/>
+	/// Gets last module that can be assigned
+	/// to a variable of the specified <paramref name="moduleType"/>
 	/// or throws an <see cref="InvalidOperationException"/>
-	/// if the agent does not contain a module of that type.
-	/// </summary>
-	/// <returns>The module of the specified type.</returns>
-	public Module GetModule(Type moduleType)
-		=> GetModuleOrDefault(moduleType)
-		?? throw new InvalidOperationException(
-			$"Module of type {moduleType.ToVerboseString()} not found."
-		);
-	
-	/// <summary>
-	/// Gets all modules of the specified <typeparamref name="T"/> type.
+	/// if the agent does not contain such a module.
+	/// Modules added later take precedence over modules added before them
+	/// which is why the last module that meets the criteria is returned.
 	/// </summary>
 	/// <returns>
-	/// 	All modules of the specified type,
+	/// 	The most significant module assignable to the given type.
+	/// </returns>
+	public Module GetModule(Type moduleType)
+		=> GetModuleOrDefault(moduleType)
+		?? throw new Exception(
+			$"Module of type {moduleType.ToVerboseString()} not found."
+		);
+
+	/// <summary>
+	/// Gets all modules that can be assigned
+	/// to a variable of the specified <typeparamref name="T"/> type.
+	/// Modules are returned in the reverse order they were added to the agent.
+	/// Modules added later take precedence over modules added before them
+	/// which is why the modules are returned in reverse order.
+	/// </summary>
+	/// <returns>
+	/// 	All modules that can be assigned to the given type
 	/// 	or an empty enumerable if none were found.
 	/// </returns>
 	public IEnumerable<T> GetModules<T>()
 		where T : Module
-		=> _modules.OfType<T>();
+		=> _modules.OfType<T>().Reverse();
 	
 	/// <summary>
 	/// Gets all modules on the agent that requires a module of type <typeparamref name="T"/>.
@@ -897,6 +934,157 @@ public class Agent : IDisposable
 			log?.Dispose();
 		}
 		return this;
+	}
+
+	#endregion
+
+	#region Run
+
+	private CancellationTokenSource? _runCancellation;
+	/// <summary>
+	/// Runs the agent by calling
+	/// <see cref="Module.RunAsync">RunAsync()</see>
+	/// on every module in parallel.
+	/// </summary>
+	/// <param name="exceptionBehavior">
+	/// 	Defines how the agent should behave
+	/// 	when an exception occurs in a module's
+	/// 	<see cref="Module.RunAsync">RunAsync()</see> method.
+	/// </param>
+	public async Task RunAsync(
+		ExceptionBehavior exceptionBehavior = ExceptionBehavior.LogAndStopModule,
+		CancellationToken cancellationToken = default
+	)
+	{
+		if(State is Disposed or Disposing)
+			throw new ObjectDisposedException("Disposed agents cannot run.");
+		
+		if(State is Uninitialized)
+			throw new InvalidOperationException("Cannot run an uninitialized agent.");
+		
+		if(State is Initializing)
+			throw new InvalidOperationException("Cannot run an agent while it is initializing.");
+
+		if(_runCancellation is not null)
+			throw new InvalidOperationException("The agent is already running.");
+
+		while(true)
+		{
+			_runCancellation = new();
+			var cancel = _runCancellation;
+			cancellationToken.Register(cancel.Cancel);
+			try
+			{
+				await Task.WhenAll(
+					_modules.Select(module => Task.Run(async () =>
+					{
+						while(true)
+						{
+							try
+							{
+								await module.RunAsync(cancel.Token);
+								return;
+							}
+							catch(Exception error)
+							{
+								if(cancel.IsCancellationRequested)
+								{
+									if(error is OperationCanceledException)
+										throw;
+									throw new OperationCanceledException();
+								}
+								
+								if(exceptionBehavior is ExceptionBehavior.RethrowAndStopAll)
+									throw;
+								
+								Debug.LogError(error, "An error occurred while running {module} on agent {name}.", module, Name);
+								switch(exceptionBehavior)
+								{
+									case ExceptionBehavior.LogAndStopModule:
+										Debug.LogInformation("Stopping module {module} from agent {name}.", module, Name);
+										await Task.Delay(10, cancel.Token);
+										return;
+									case ExceptionBehavior.LogAndRemoveModule:
+										Debug.LogInformation("Removing module {module} from agent {name}.", module, Name);
+										await Task.Delay(10, cancel.Token);
+										RemoveModule(module);
+										return;
+									case ExceptionBehavior.LogAndRerunModule:
+										Debug.LogInformation("Rerunning module {module} on agent {name}.", module, Name);
+										await Task.Delay(10, cancel.Token);
+										break;
+									default:
+										await Task.Delay(10, cancel.Token);
+										throw;
+								}
+							}
+						}
+					}, cancel.Token))
+				);
+				return;
+			}
+			catch
+			{
+				if(cancel.IsCancellationRequested)
+					return;
+				if(exceptionBehavior is ExceptionBehavior.RethrowAndStopAll)
+					throw;
+
+				cancel.Cancel();
+				if(exceptionBehavior is ExceptionBehavior.LogAndRerunAll)
+					Debug.LogInformation("Rerunning agent {name}.", Name);
+				else
+				{
+					if(exceptionBehavior is ExceptionBehavior.LogAndStopAll)
+						Debug.LogInformation("Stopping agent {name}.", Name);
+					return;
+				}
+			}
+			finally
+			{
+				_runCancellation = null;
+			}
+		}
+	}
+
+	public void Stop()
+		=> _runCancellation?.Cancel();
+
+	public bool IsRunning
+		=> _runCancellation is not null;
+
+	public enum ExceptionBehavior
+	{
+		/// <summary>
+		/// <em>Default behavior.</em><br/>
+		/// Logs the exception and stops running the module that threw the exception.
+		/// <br/> All other modules will continue running.
+		/// </summary>
+		LogAndStopModule,
+		/// <summary>
+		/// Logs the exception and removes the module that threw the exception.
+		/// <br/> All other modules will continue running.
+		/// </summary>
+		LogAndRemoveModule,
+		/// <summary>
+		/// Logs the exception and reruns the module that threw the exception.
+		/// <br/> All other modules will continue running.
+		/// </summary>
+		LogAndRerunModule,
+		/// <summary>
+		/// Logs the exception, stops all modules and reruns them all.
+		/// </summary>
+		LogAndRerunAll,
+		/// <summary>
+		/// Logs the exception and stops running the other modules.
+		/// <br/> This means the agent will stop running after the first exception.
+		/// </summary>
+		LogAndStopAll,
+		/// <summary>
+		/// Rethrows the exception and stops running the other modules.
+		/// <br/> This means the agent will stop running after the first exception.
+		/// </summary>
+		RethrowAndStopAll,
 	}
 
 	#endregion

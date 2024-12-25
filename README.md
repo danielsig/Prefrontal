@@ -39,17 +39,20 @@ it is not yet available on NuGet.
 You simply instantiate an [Agent](https://danielsig.github.io/Prefrontal/api/Prefrontal.Agent.html),
 add various [Modules](https://danielsig.github.io/Prefrontal/api/Prefrontal.Modules.html)
 to it via [AddModule&lt;T&gt;()](https://danielsig.github.io/Prefrontal/api/Prefrontal.Agent.html#Prefrontal_Agent_AddModule__1_System_Action___0__)
+initialize it by calling
+[InitializeAsync()](https://danielsig.github.io/Prefrontal/api/Prefrontal.Agent.html#Prefrontal_Agent_InitializeAsync)
 and then run it by calling
-[Initialize()](https://danielsig.github.io/Prefrontal/api/Prefrontal.Agent.html#Prefrontal_Agent_Initialize_System_Boolean_).
+[RunAsync()](https://danielsig.github.io/Prefrontal/api/Prefrontal.Agent.html#Prefrontal_Agent_RunAsync_Prefrontal_Agent_ExceptionBehavior_System_Threading_CancellationToken_).
 
 ```csharp
-var agent = new Agent
+var agent = await new Agent
 	{
 		Name = "MyAgent",
 		Description = "My first agent",
 	}
-	.AddModule<TimerModule>()
-	.AddModule<LLMProviderModule>()
+	.AddRemoteLLMProvider("https://api.openai.com/v1/", "your-api-key")
 	.AddModule<ConsoleChatModule>()
-	.Initialize();
+	.InitializeAsync();
+
+await agent.RunAsync();
 ```

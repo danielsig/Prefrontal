@@ -23,4 +23,9 @@ public static class XTask
 	/// <inheritdoc cref="Then{TIn, TOut}"/>
 	public static async Task<TOut> Then<TIn, TOut>(this Task<TIn> task, Func<TIn, Task<TOut>> then)
 		=> await then(await task);
+	
+	public static async IAsyncEnumerable<T> ToAsyncEnumerable<T>(this Task<T> task)
+	{
+		yield return await task;
+	}
 }
