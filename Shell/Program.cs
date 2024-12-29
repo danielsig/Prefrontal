@@ -7,7 +7,6 @@ using Prefrontal.Modules.Chat.Text;
 Console.OutputEncoding = System.Text.Encoding.UTF8;
 Console.InputEncoding = System.Text.Encoding.UTF8;
 
-
 using var jarvis = await new Agent
 	(
 		s => s
@@ -25,6 +24,6 @@ using var jarvis = await new Agent
 	.InitializeAsync();
 
 await jarvis.RunAsync(
-	Agent.ExceptionBehavior.LogAndRerunModule
+	RunningModuleExceptionPolicy.LogAndRerunModule
 );
 

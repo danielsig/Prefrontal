@@ -39,8 +39,8 @@ namespace Prefrontal;
 ///			or <see cref="SendSignalAsync{TSignal, TResponse}(TSignal)"/>.
 ///			Signal processors and senders are not matched by the response type,
 ///			only by the signal type. This means that if the response type
-///			 of a signal processor does not match the expected response type
-///			 of the sender, the response will be empty.
+///			of a signal processor does not match the expected response type
+///			of the sender, the response will be empty.
 ///		</item>
 ///		<item>
 ///			Modules can implement <see cref="IDisposable"/>
@@ -220,10 +220,36 @@ public abstract class Module
 	/// 		to run all the modules in parallel.
 	/// 	</item>
 	/// 	<item>
-	/// 		Returning from this method will be considered
-	/// 		as the module having completed its primary task.
-	/// 		To keep the module running indefinitely,
-	/// 		override this method and run an infinite loop.
+	/// 		Returning from this method means the module
+	/// 		has completed its primary task
+	/// 		and won't be called again during the same
+	/// 		<see cref="Agent.RunAsync">Agent.RunAsync()</see>
+	/// 		call.
+	/// 	</item>
+	/// 	<item>
+	/// 		The <see cref="RunningModuleExceptionPolicy"/>
+	/// 		passed to <see cref="Agent.RunAsync">Agent.RunAsync()</see>
+	/// 		controls what happens when this method throws an exception.
+	/// 	</item>
+	/// 	<item>
+	/// 		The <see cref="CancellationToken"/> passed to this method
+	/// 		signals that the method should stop running and return.
+	/// 		This can happen when module is removed,
+	/// 		the <see cref="Agent.Stop"/> method is called
+	/// 		or the agent is disposed of.
+	/// 	</item>
+	/// 	<item>
+	/// 		To keep the module's logic running indefinitely,
+	/// 		you can override this method and run a loop like so:
+	/// <code language="csharp">
+	/// 	protected override async Task RunAsync(CancellationToken cancellationToken)
+	/// 	{
+	/// 		while(!cancellationToken.IsCancellationRequested)
+	/// 		{
+	/// 			// Your module's logic here
+	/// 		}
+	/// 	}
+	/// </code>
 	/// 	</item>
 	/// </list>
 	/// </summary>

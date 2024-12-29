@@ -39,10 +39,10 @@ public class RemoteLLM<TMessage> : LLM<TMessage>
 
 
 	#region assigned right before serialization
-	#pragma warning disable IDE0052
+	#pragma warning disable IDE0052, CS0414
 	[JsonInclude, JsonPropertyName("stream")] private bool _stream = false;
 	[JsonInclude, JsonPropertyName("n")] private int _n = 1;
-#pragma warning restore IDE0052
+	#pragma warning restore IDE0052, CS0414
 	#endregion
 
 

@@ -97,7 +97,7 @@ namespace Prefrontal;
 /// </para>
 /// <br/>
 /// </summary>
-public class Agent : IDisposable
+public partial class Agent : IDisposable
 {
 	/// <summary>
 	/// Creates a new agent without a <see cref="ServiceProvider"/>.
@@ -356,8 +356,13 @@ public class Agent : IDisposable
 			// invoke callbacks
 			configure?.Invoke(module);
 			if(State is Initialized or Initializing)
-				module.InitializeAsync().Wait();
-			
+				Task.Run(async () =>
+				{
+					await module.InitializeAsync(); // call InitializeAsync
+					_updateRunningModules?.TrySetResult(); // call RunAsync (if running)
+				});
+
+
 			return module;
 		}
 		catch(Exception ex)
@@ -658,6 +663,7 @@ public class Agent : IDisposable
 			foreach(var module in toBeRemoved)
 				module.Agent = null!;
 			_modules.RemoveAll(toBeRemoved.Contains);
+			_updateRunningModules?.TrySetResult(); // cancel RunAsync (if running)
 			return true;
 		}
 		return false;
@@ -940,11 +946,27 @@ public class Agent : IDisposable
 
 	#region Run
 
-	private CancellationTokenSource? _runCancellation;
+	private CancellationTokenSource? _runCancellation; // used to cancel the agent's RunAsync method
+	private TaskCompletionSource? _updateRunningModules; // used to update the list of running modules
+
 	/// <summary>
-	/// Runs the agent by calling
+	/// Runs the agent by calling every module's
 	/// <see cref="Module.RunAsync">RunAsync()</see>
-	/// on every module in parallel.
+	/// method in parallel.
+	/// <list type="bullet">
+	/// 	<item>
+	///			Adding or removing modules while the agent is running
+	///			will automatically update the list of running modules.
+	///		</item>
+	///		<item>
+	///			Only when all modules have finished running
+	///			will the agent return control to the caller.
+	///		</item>
+	///		<item>
+	///			Exceptions thrown by modules are caught and handled
+	///			according to the <paramref name="exceptionPolicy"/> parameter.
+	///		</item>
+	///	</list>
 	/// </summary>
 	/// <param name="exceptionBehavior">
 	/// 	Defines how the agent should behave
@@ -952,7 +974,7 @@ public class Agent : IDisposable
 	/// 	<see cref="Module.RunAsync">RunAsync()</see> method.
 	/// </param>
 	public async Task RunAsync(
-		ExceptionBehavior exceptionBehavior = ExceptionBehavior.LogAndStopModule,
+		RunningModuleExceptionPolicy exceptionPolicy = RunningModuleExceptionPolicy.LogAndStopModule,
 		CancellationToken cancellationToken = default
 	)
 	{
@@ -967,75 +989,79 @@ public class Agent : IDisposable
 
 		if(_runCancellation is not null)
 			throw new InvalidOperationException("The agent is already running.");
-
+		
+		var currentlyRunning = new List<ModuleRun>();
 		while(true)
 		{
+			_updateRunningModules = new();
 			_runCancellation = new();
-			var cancel = _runCancellation;
-			cancellationToken.Register(cancel.Cancel);
+			using var cancel = _runCancellation;
+			using var _ = cancellationToken.Register(cancel.Cancel);
 			try
 			{
-				await Task.WhenAll(
-					_modules.Select(module => Task.Run(async () =>
+				// start running modules that are not already running
+				foreach(var module in _modules)
+					if(!currentlyRunning.Any(t => t.Module == module))
 					{
-						while(true)
-						{
-							try
-							{
-								await module.RunAsync(cancel.Token);
-								return;
-							}
-							catch(Exception error)
-							{
-								if(cancel.IsCancellationRequested)
-								{
-									if(error is OperationCanceledException)
-										throw;
-									throw new OperationCanceledException();
-								}
-								
-								if(exceptionBehavior is ExceptionBehavior.RethrowAndStopAll)
-									throw;
-								
-								Debug.LogError(error, "An error occurred while running {module} on agent {name}.", module, Name);
-								switch(exceptionBehavior)
-								{
-									case ExceptionBehavior.LogAndStopModule:
-										Debug.LogInformation("Stopping module {module} from agent {name}.", module, Name);
-										await Task.Delay(10, cancel.Token);
-										return;
-									case ExceptionBehavior.LogAndRemoveModule:
-										Debug.LogInformation("Removing module {module} from agent {name}.", module, Name);
-										await Task.Delay(10, cancel.Token);
-										RemoveModule(module);
-										return;
-									case ExceptionBehavior.LogAndRerunModule:
-										Debug.LogInformation("Rerunning module {module} on agent {name}.", module, Name);
-										await Task.Delay(10, cancel.Token);
-										break;
-									default:
-										await Task.Delay(10, cancel.Token);
-										throw;
-								}
-							}
-						}
-					}, cancel.Token))
+						var cancelModule = new CancellationTokenSource();
+						cancel.Token.Register(cancelModule.Cancel); // no need to dispose of this CancellationTokenRegistration
+						currentlyRunning.Add(new ModuleRun(
+							module,
+							RunModule(module, exceptionPolicy, cancelModule.Token),
+							cancelModule
+						));
+					}
+
+				// stop running modules that are no longer part of the agent
+				var toRemove = currentlyRunning
+					.Where(t => !_modules.Contains(t.Module))
+					.ToList();
+				foreach(var run in toRemove)
+				{
+					run.Cancel.Cancel();
+					currentlyRunning.Remove(run);
+				}
+
+				// if _modules have changed...
+				if(_updateRunningModules.Task.IsCompleted)
+					// we need to rerun the loop
+					// to update the list of running modules
+					continue;
+				
+				await Task.WhenAny(
+					// wait for either all modules to finish...
+					Task.WhenAll(currentlyRunning.Select(t => t.Task)),
+					// ...or for the list of modules to change
+					_updateRunningModules.Task
 				);
-				return;
+
+				// if _modules have changed...
+				if(_updateRunningModules.Task.IsCompleted)
+					// we need to rerun the loop
+					// to update the list of running modules
+					continue;
+				else
+					// otherwise, all modules have finished running
+					return;
+
 			}
 			catch
 			{
 				if(cancel.IsCancellationRequested)
 					return;
-				if(exceptionBehavior is ExceptionBehavior.RethrowAndStopAll)
+				if(exceptionPolicy is RunningModuleExceptionPolicy.RethrowAndStopAll)
 					throw;
 
 				cancel.Cancel();
-				if(exceptionBehavior is ExceptionBehavior.LogAndRerunAll)
+				currentlyRunning.Clear();
+				if(exceptionPolicy is RunningModuleExceptionPolicy.LogAndRerunAll)
+				{
 					Debug.LogInformation("Rerunning agent {name}.", Name);
+					await Task.Delay(10, cancel.Token);
+				}
 				else
 				{
-					if(exceptionBehavior is ExceptionBehavior.LogAndStopAll)
+					if(exceptionPolicy is RunningModuleExceptionPolicy.LogAndStopAll)
 						Debug.LogInformation("Stopping agent {name}.", Name);
 					return;
 				}
@@ -1043,9 +1069,56 @@ public class Agent : IDisposable
 			finally
 			{
 				_runCancellation = null;
+				_updateRunningModules = null;
 			}
 		}
 	}
+
+	private Task RunModule(Module module, RunningModuleExceptionPolicy exceptionBehavior, CancellationToken cancellationToken)
+		=> Task.Run(async () =>
+		{
+			while(true)
+			{
+				try
+				{
+					await module.RunAsync(cancellationToken);
+					return;
+				}
+				catch(Exception error)
+				{
+					if(cancellationToken.IsCancellationRequested)
+					{
+						if(error is OperationCanceledException)
+							throw;
+						throw new OperationCanceledException();
+					}
+
+					if(exceptionBehavior is RunningModuleExceptionPolicy.RethrowAndStopAll)
+						throw;
+
+					Debug.LogError(error, "An error occurred while running {module} on agent {name}.", module, Name);
+					switch(exceptionBehavior)
+					{
+						case RunningModuleExceptionPolicy.LogAndStopModule:
+							Debug.LogInformation("Stopping module {module} from agent {name}.", module, Name);
+							await Task.Delay(10, cancellationToken);
+							return;
+						case RunningModuleExceptionPolicy.LogAndRemoveModule:
+							Debug.LogInformation("Removing module {module} from agent {name}.", module, Name);
+							await Task.Delay(10, cancellationToken);
+							RemoveModule(module);
+							return;
+						case RunningModuleExceptionPolicy.LogAndRerunModule:
+							Debug.LogInformation("Rerunning module {module} on agent {name}.", module, Name);
+							await Task.Delay(10, cancellationToken);
+							break;
+						default:
+							await Task.Delay(10, cancellationToken);
+							throw;
+					}
+				}
+			}
+		}, cancellationToken);
 
 	public void Stop()
 		=> _runCancellation?.Cancel();
@@ -1053,39 +1126,21 @@ public class Agent : IDisposable
 	public bool IsRunning
 		=> _runCancellation is not null;
 
-	public enum ExceptionBehavior
-	{
-		/// <summary>
-		/// <em>Default behavior.</em><br/>
-		/// Logs the exception and stops running the module that threw the exception.
-		/// <br/> All other modules will continue running.
-		/// </summary>
-		LogAndStopModule,
-		/// <summary>
-		/// Logs the exception and removes the module that threw the exception.
-		/// <br/> All other modules will continue running.
-		/// </summary>
-		LogAndRemoveModule,
-		/// <summary>
-		/// Logs the exception and reruns the module that threw the exception.
-		/// <br/> All other modules will continue running.
-		/// </summary>
-		LogAndRerunModule,
-		/// <summary>
-		/// Logs the exception, stops all modules and reruns them all.
-		/// </summary>
-		LogAndRerunAll,
-		/// <summary>
-		/// Logs the exception and stops running the other modules.
-		/// <br/> This means the agent will stop running after the first exception.
-		/// </summary>
-		LogAndStopAll,
-		/// <summary>
-		/// Rethrows the exception and stops running the other modules.
-		/// <br/> This means the agent will stop running after the first exception.
-		/// </summary>
-		RethrowAndStopAll,
-	}
+	/// <summary>
+	/// Container for a running module,
+	/// the task representing the module's RunAsync method,
+	/// and the cancellation token source to cancel it
+	/// when the module is removed from the agent.
+	/// </summary>
+	/// <param name="Module"></param>
+	/// <param name="Task"></param>
+	/// <param name="CancelModule"></param>
+	private record ModuleRun
+	(
+		Module Module,
+		Task Task,
+		CancellationTokenSource Cancel
+	);
 
 	#endregion
 
@@ -1110,6 +1165,8 @@ public class Agent : IDisposable
 			throw new InvalidOperationException(
 				"Cannot dispose of an agent while it is initializing."
 			);
+
+		_runCancellation?.Cancel();
 
 		var log = Debug.BeginScopeValues(("Agent", Name));
 		Debug.LogInformation("Disposing of {Name}", Name);
