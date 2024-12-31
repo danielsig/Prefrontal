@@ -5,10 +5,27 @@ using System.Text.Json.Serialization;
 
 namespace Prefrontal.Modules.Chat;
 
+
+/// <summary>
+/// A base class for large language models (LLMs)
+/// that can be used to generate text and embeddings.
+/// </summary>
+/// <typeparam name="TMessage">
+/// 	The type of <see cref="Messages"/> the LLM uses.
+/// 	Typically this would be <see cref="Message"/> or
+/// 	<see href="https://learn.microsoft.com/en-us/dotnet/api/microsoft.semantickernel.chatmessagecontent">
+/// 		Microsoft.SemanticKernel.ChatMessageContent
+/// 	</see>.
+/// </typeparam>
 public abstract class LLM<TMessage>
 {
-	public string Model = "";
+	/// <summary>
+	/// The messages in the conversation.
+	/// This is the context that the LLM uses to generate completions.
+	/// Do not edit this while the LLM is generating completions.
+	/// </summary>
 	public List<TMessage> Messages = [];
+	public string Model = "";
 	public double Temperature = 0.7;
 	public int MaxTokens = 200;
 	public double TopP = 0.9;
